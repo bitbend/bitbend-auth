@@ -11,4 +11,4 @@ Effortless setup, powerful features, and complete control, all in one place.
 DriftAuth offers a comprehensive suite of features designed to seamlessly implement 
 a robust authentication system, ensuring security and ease of use right from the start.
 
-Built With 💖 by DriftDev
+Built With 💖 by DriftBase
