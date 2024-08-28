@@ -9,7 +9,6 @@ type ReadModel struct {
 	AggregateId       AggregateId
 	Events            []Event
 	Owner             string
-	Creator           string
 	Position          float64
 	ProcessedSequence uint64
 	CreatedAt         time.Time
@@ -35,10 +34,6 @@ func (rm *ReadModel) Reduce() error {
 
 	if rm.Owner == "" {
 		rm.Owner = rm.Events[0].Aggregate.Owner
-	}
-
-	if rm.Creator == "" {
-		rm.Creator = rm.Events[0].Aggregate.Creator
 	}
 
 	if rm.CreatedAt.IsZero() {
