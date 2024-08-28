@@ -31,5 +31,4 @@ type Aggregate struct {
 	Id       AggregateId
 	Sequence uint64
 	Owner    string
-	Creator  string
 }

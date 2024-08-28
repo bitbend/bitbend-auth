@@ -28,6 +28,7 @@ type Event struct {
 	Type          EventType
 	Version       EventVersion
 	Data          []byte
+	Creator       string
 	CorrelationId *string
 	CausationId   *string
 	Position      float64
