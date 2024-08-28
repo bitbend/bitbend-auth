@@ -2,7 +2,7 @@ package database
 
 import "time"
 
-type SearchField struct {
+type Field struct {
 	Id               string    `db:"id" json:"id"`
 	TenantId         string    `db:"tenant_id" json:"tenant_id"`
 	AggregateType    string    `db:"aggregate_type" json:"aggregate_type"`
