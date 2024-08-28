@@ -9,7 +9,6 @@ type WriteModel struct {
 	AggregateId       AggregateId
 	Events            []Event
 	Owner             string
-	Creator           string
 	ProcessedSequence uint64
 	ChangedAt         time.Time
 }
@@ -33,10 +32,6 @@ func (wm *WriteModel) Reduce() error {
 
 	if wm.Owner == "" {
 		wm.Owner = wm.Events[0].Aggregate.Owner
-	}
-
-	if wm.Creator == "" {
-		wm.Creator = wm.Events[0].Aggregate.Creator
 	}
 
 	wm.ProcessedSequence = wm.Events[len(wm.Events)-1].Aggregate.Sequence
