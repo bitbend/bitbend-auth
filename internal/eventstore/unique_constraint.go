@@ -11,7 +11,6 @@ type UniqueConstraintAction string
 const (
 	UniqueConstraintActionAdd           UniqueConstraintAction = "add"
 	UniqueConstraintActionRemove        UniqueConstraintAction = "remove"
-	UniqueConstraintActionUpdate        UniqueConstraintAction = "update"
 	UniqueConstraintActionTenantRemoved UniqueConstraintAction = "tenant_removed"
 )
 
