@@ -22,15 +22,16 @@ func (ev EventVersion) Unit() uint {
 	return uint(ev)
 }
 
-type Event struct {
-	Id            EventId
-	Aggregate     *Aggregate
-	Type          EventType
-	Version       EventVersion
-	Data          []byte
-	Creator       string
-	CorrelationId *string
-	CausationId   *string
-	Position      float64
-	CreatedAt     time.Time
+type Event interface {
+	GetId() EventId
+	GetAggregate() *Aggregate
+	GetType() EventType
+	GetVersion() EventVersion
+	GetData() []byte
+	GetCreator() string
+	GetCorrelationId() *string
+	GetCausationId() *string
+	GetPosition() float64
+	GetCreatedAt() time.Time
+	Unmarshal(ptr any) error
 }
