@@ -23,19 +23,19 @@ func (wm *WriteModel) Reduce() error {
 	}
 
 	if wm.TenantId == "" {
-		wm.TenantId = wm.Events[0].Aggregate.TenantId
+		wm.TenantId = wm.Events[0].Aggregate().TenantId
 	}
 
 	if wm.AggregateId == "" {
-		wm.AggregateId = wm.Events[0].Aggregate.Id
+		wm.AggregateId = wm.Events[0].Aggregate().Id
 	}
 
 	if wm.Owner == "" {
-		wm.Owner = wm.Events[0].Aggregate.Owner
+		wm.Owner = wm.Events[0].Aggregate().Owner
 	}
 
-	wm.ProcessedSequence = wm.Events[len(wm.Events)-1].Aggregate.Sequence
-	wm.ChangedAt = wm.Events[len(wm.Events)-1].CreatedAt
+	wm.ProcessedSequence = wm.Events[len(wm.Events)-1].Aggregate().Sequence
+	wm.ChangedAt = wm.Events[len(wm.Events)-1].CreatedAt()
 
 	wm.Events = nil
 	wm.Events = []Event{}

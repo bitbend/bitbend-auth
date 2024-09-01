@@ -8,68 +8,60 @@ import (
 var _ Event = (*EventBase)(nil)
 
 type EventBase struct {
-	Id                            EventId
-	Type                          EventType
-	Version                       EventVersion
-	Aggregate                     *Aggregate
+	Agg                           *Aggregate
+	Typ                           EventType
 	previousAggregateSequence     uint64
 	previousAggregateTypeSequence uint64
 	Data                          []byte
-	Creator                       string
-	CorrelationId                 *string
-	CausationId                   *string
-	Position                      float64
-	CreatedAt                     time.Time
+	User                          string
+	Correlation                   *string
+	Causation                     *string
+	Pos                           float64
+	Create                        time.Time
 }
 
-func (eb *EventBase) SetCorrelationId(correlationId string) {
-	eb.CorrelationId = &correlationId
+func (eb *EventBase) WithCorrelationId(correlationId string) *EventBase {
+	eb.Correlation = &correlationId
+	return eb
 }
 
-func (eb *EventBase) SetCausationId(causationId string) {
-	eb.CausationId = &causationId
+func (eb *EventBase) WithCausationId(causationId string) *EventBase {
+	eb.Causation = &causationId
+	return eb
 }
 
-func (eb *EventBase) GetId() EventId {
-	return eb.Id
+func (eb *EventBase) Aggregate() *Aggregate {
+	return eb.Agg
 }
 
-func (eb *EventBase) GetAggregate() *Aggregate {
-	return eb.Aggregate
+func (eb *EventBase) Creator() string {
+	return eb.User
 }
 
-func (eb *EventBase) GetType() EventType {
-	return eb.Type
+func (eb *EventBase) Type() EventType {
+	return eb.Typ
 }
 
-func (eb *EventBase) GetVersion() EventVersion {
-	return eb.Version
+func (eb *EventBase) Version() uint {
+	return eb.Agg.Version.Uint()
 }
 
-func (eb *EventBase) GetData() []byte {
-	return eb.Data
+func (eb *EventBase) CorrelationId() *string {
+	return eb.Correlation
 }
 
-func (eb *EventBase) GetCreator() string {
-	return eb.Creator
+func (eb *EventBase) CausationId() *string {
+	return eb.Causation
 }
 
-func (eb *EventBase) GetCorrelationId() *string {
-	return eb.CorrelationId
+func (eb *EventBase) Position() float64 {
+	return eb.Pos
 }
 
-func (eb *EventBase) GetCausationId() *string {
-	return eb.CausationId
+func (eb *EventBase) CreatedAt() time.Time {
+	return eb.Create
 }
 
-func (eb *EventBase) GetPosition() float64 {
-	return eb.Position
-}
-
-func (eb *EventBase) GetCreatedAt() time.Time {
-	return eb.CreatedAt
-}
-
-func (eb *EventBase) Unmarshal(ptr any) error {
+func (eb *EventBase) UnmarshalData(ptr any) error {
 	return json.Unmarshal(eb.Data, ptr)
 }
