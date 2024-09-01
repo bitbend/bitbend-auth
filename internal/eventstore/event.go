@@ -31,7 +31,6 @@ type Command interface {
 
 type Event interface {
 	action
-	Creator() string
 	CorrelationId() *string
 	CausationId() *string
 	Position() float64
