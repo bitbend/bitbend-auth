@@ -12,3 +12,12 @@ type EventStore struct {
 	lastTenantQuery time.Time
 	tenantMutex     sync.Mutex
 }
+
+type Push interface {
+}
+
+type Query interface {
+}
+
+type SearchQuery interface {
+}

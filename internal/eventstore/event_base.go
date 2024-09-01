@@ -8,58 +8,54 @@ import (
 var _ Event = (*EventBase)(nil)
 
 type EventBase struct {
-	Agg                           *Aggregate
-	Typ                           EventType
+	Aggregate                     *Aggregate
+	EventType                     EventType
 	previousAggregateSequence     uint64
 	previousAggregateTypeSequence uint64
 	Data                          []byte
-	User                          string
-	Correlation                   *string
-	Causation                     *string
-	Pos                           float64
-	Create                        time.Time
+	Creator                       string
+	CorrelationId                 *string
+	CausationId                   *string
+	Position                      float64
+	CreatedAt                     time.Time
 }
 
 func (eb *EventBase) WithCorrelationId(correlationId string) *EventBase {
-	eb.Correlation = &correlationId
+	eb.CorrelationId = &correlationId
 	return eb
 }
 
 func (eb *EventBase) WithCausationId(causationId string) *EventBase {
-	eb.Causation = &causationId
+	eb.CausationId = &causationId
 	return eb
 }
 
-func (eb *EventBase) Aggregate() *Aggregate {
-	return eb.Agg
+func (eb *EventBase) GetAggregate() *Aggregate {
+	return eb.Aggregate
 }
 
-func (eb *EventBase) Creator() string {
-	return eb.User
+func (eb *EventBase) GetCreator() string {
+	return eb.Creator
 }
 
-func (eb *EventBase) Type() EventType {
-	return eb.Typ
+func (eb *EventBase) GetEventType() EventType {
+	return eb.EventType
 }
 
-func (eb *EventBase) Version() uint {
-	return eb.Agg.Version.Uint()
+func (eb *EventBase) GetCorrelationId() *string {
+	return eb.CorrelationId
 }
 
-func (eb *EventBase) CorrelationId() *string {
-	return eb.Correlation
+func (eb *EventBase) GetCausationId() *string {
+	return eb.CausationId
 }
 
-func (eb *EventBase) CausationId() *string {
-	return eb.Causation
+func (eb *EventBase) GetPosition() float64 {
+	return eb.Position
 }
 
-func (eb *EventBase) Position() float64 {
-	return eb.Pos
-}
-
-func (eb *EventBase) CreatedAt() time.Time {
-	return eb.Create
+func (eb *EventBase) GetCreatedAt() time.Time {
+	return eb.CreatedAt
 }
 
 func (eb *EventBase) UnmarshalData(ptr any) error {
