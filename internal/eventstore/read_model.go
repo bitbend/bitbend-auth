@@ -25,24 +25,24 @@ func (rm *ReadModel) Reduce() error {
 	}
 
 	if rm.TenantId == "" {
-		rm.TenantId = rm.Events[0].Aggregate().TenantId
+		rm.TenantId = rm.Events[0].GetAggregate().TenantId
 	}
 
 	if rm.AggregateId == "" {
-		rm.AggregateId = rm.Events[0].Aggregate().Id
+		rm.AggregateId = rm.Events[0].GetAggregate().Id
 	}
 
 	if rm.Owner == "" {
-		rm.Owner = rm.Events[0].Aggregate().Owner
+		rm.Owner = rm.Events[0].GetAggregate().Owner
 	}
 
 	if rm.CreatedAt.IsZero() {
-		rm.CreatedAt = rm.Events[0].CreatedAt()
+		rm.CreatedAt = rm.Events[0].GetCreatedAt()
 	}
 
-	rm.ChangedAt = rm.Events[len(rm.Events)-1].CreatedAt()
-	rm.ProcessedSequence = rm.Events[len(rm.Events)-1].Aggregate().Sequence
-	rm.Position = rm.Events[len(rm.Events)-1].Position()
+	rm.ChangedAt = rm.Events[len(rm.Events)-1].GetCreatedAt()
+	rm.ProcessedSequence = rm.Events[len(rm.Events)-1].GetAggregate().Sequence
+	rm.Position = rm.Events[len(rm.Events)-1].GetPosition()
 
 	rm.Events = rm.Events[0:0]
 

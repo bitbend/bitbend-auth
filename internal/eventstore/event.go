@@ -17,23 +17,22 @@ func (et EventType) String() string {
 }
 
 type action interface {
-	Aggregate() *Aggregate
-	Creator() string
-	Type() EventType
-	Version() uint
+	GetAggregate() *Aggregate
+	GetCreator() string
+	GetEventType() EventType
 }
 
 type Command interface {
 	action
-	Payload() any
-	UniqueConstraints() []*UniqueConstraint
+	GetPayload() any
+	GetUniqueConstraints() []*UniqueConstraint
 }
 
 type Event interface {
 	action
-	CorrelationId() *string
-	CausationId() *string
-	Position() float64
-	CreatedAt() time.Time
+	GetCorrelationId() *string
+	GetCausationId() *string
+	GetPosition() float64
+	GetCreatedAt() time.Time
 	UnmarshalData(ptr any) error
 }
