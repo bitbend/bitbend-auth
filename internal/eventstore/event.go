@@ -16,22 +16,25 @@ func (et EventType) String() string {
 	return string(et)
 }
 
-type EventVersion uint
+type action interface {
+	Aggregate() *Aggregate
+	Creator() string
+	Type() EventType
+	Version() uint
+}
 
-func (ev EventVersion) Unit() uint {
-	return uint(ev)
+type Command interface {
+	action
+	Payload() any
+	UniqueConstraints() []*UniqueConstraint
 }
 
 type Event interface {
-	GetId() EventId
-	GetAggregate() *Aggregate
-	GetType() EventType
-	GetVersion() EventVersion
-	GetData() []byte
-	GetCreator() string
-	GetCorrelationId() *string
-	GetCausationId() *string
-	GetPosition() float64
-	GetCreatedAt() time.Time
-	Unmarshal(ptr any) error
+	action
+	Creator() string
+	CorrelationId() *string
+	CausationId() *string
+	Position() float64
+	CreatedAt() time.Time
+	UnmarshalData(ptr any) error
 }
