@@ -1,6 +1,11 @@
 package eventstore
 
 import (
+	"context"
+	_ "embed"
+	"fmt"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"sync"
 	"time"
 )
@@ -11,13 +16,32 @@ type EventStore struct {
 	tenants         []string
 	lastTenantQuery time.Time
 	tenantMutex     sync.Mutex
+	pool            *pgxpool.Pool
 }
 
-type Push interface {
-}
+func (es *EventStore) withTxn(ctx context.Context, txOptions pgx.TxOptions, fn func(tx pgx.Tx, ctx context.Context) error) error {
+	tx, err := es.pool.BeginTx(ctx, txOptions)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
 
-type Query interface {
-}
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback(ctx)
+			panic(p)
+		} else if err != nil {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				err = fmt.Errorf("failed to rollback transaction: %v, original error: %w", rbErr, err)
+			}
+		}
+	}()
 
-type SearchQuery interface {
+	err = fn(tx, ctx)
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }

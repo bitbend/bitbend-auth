@@ -8,24 +8,24 @@ import (
 var _ Event = (*EventBase)(nil)
 
 type EventBase struct {
-	Aggregate                     *Aggregate
-	EventType                     EventType
+	Aggregate                     *Aggregate `json:"-"`
+	EventType                     EventType  `json:"-"`
 	previousAggregateSequence     uint64
 	previousAggregateTypeSequence uint64
-	Data                          []byte
-	Creator                       string
-	CorrelationId                 *string
-	CausationId                   *string
-	Position                      float64
-	CreatedAt                     time.Time
+	Data                          []byte    `json:"-"`
+	Creator                       string    `json:"-"`
+	CorrelationId                 *string   `json:"-"`
+	CausationId                   *string   `json:"-"`
+	Position                      float64   `json:"-"`
+	CreatedAt                     time.Time `json:"-"`
 }
 
-func (eb *EventBase) WithCorrelationId(correlationId string) *EventBase {
+func (eb *EventBase) SetCorrelationId(correlationId string) *EventBase {
 	eb.CorrelationId = &correlationId
 	return eb
 }
 
-func (eb *EventBase) WithCausationId(causationId string) *EventBase {
+func (eb *EventBase) SetCausationId(causationId string) *EventBase {
 	eb.CausationId = &causationId
 	return eb
 }

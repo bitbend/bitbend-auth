@@ -12,7 +12,7 @@ type ReadModel struct {
 	Position          float64
 	ProcessedSequence uint64
 	CreatedAt         time.Time
-	ChangedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 func (rm *ReadModel) AppendEvents(events ...Event) {
@@ -40,7 +40,7 @@ func (rm *ReadModel) Reduce() error {
 		rm.CreatedAt = rm.Events[0].GetCreatedAt()
 	}
 
-	rm.ChangedAt = rm.Events[len(rm.Events)-1].GetCreatedAt()
+	rm.UpdatedAt = rm.Events[len(rm.Events)-1].GetCreatedAt()
 	rm.ProcessedSequence = rm.Events[len(rm.Events)-1].GetAggregate().Sequence
 	rm.Position = rm.Events[len(rm.Events)-1].GetPosition()
 

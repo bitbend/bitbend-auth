@@ -10,7 +10,7 @@ type WriteModel struct {
 	Events            []Event
 	Owner             string
 	ProcessedSequence uint64
-	ChangedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 func (wm *WriteModel) AppendEvents(events ...Event) {
@@ -35,7 +35,7 @@ func (wm *WriteModel) Reduce() error {
 	}
 
 	wm.ProcessedSequence = wm.Events[len(wm.Events)-1].GetAggregate().Sequence
-	wm.ChangedAt = wm.Events[len(wm.Events)-1].GetCreatedAt()
+	wm.UpdatedAt = wm.Events[len(wm.Events)-1].GetCreatedAt()
 
 	wm.Events = nil
 	wm.Events = []Event{}
