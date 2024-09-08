@@ -8,16 +8,14 @@ import (
 var _ Event = (*EventBase)(nil)
 
 type EventBase struct {
-	Aggregate                     *Aggregate `json:"-"`
-	EventType                     EventType  `json:"-"`
-	previousAggregateSequence     uint64
-	previousAggregateTypeSequence uint64
-	Data                          []byte    `json:"-"`
-	Creator                       string    `json:"-"`
-	CorrelationId                 *string   `json:"-"`
-	CausationId                   *string   `json:"-"`
-	Position                      float64   `json:"-"`
-	CreatedAt                     time.Time `json:"-"`
+	Aggregate     *Aggregate `json:"-"`
+	EventType     EventType  `json:"-"`
+	Data          []byte     `json:"-"`
+	Creator       string     `json:"-"`
+	CorrelationId *string    `json:"-"`
+	CausationId   *string    `json:"-"`
+	Position      float64    `json:"-"`
+	CreatedAt     time.Time  `json:"-"`
 }
 
 func (eb *EventBase) SetCorrelationId(correlationId string) *EventBase {
