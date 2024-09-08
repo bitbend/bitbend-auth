@@ -1,5 +1,12 @@
 package eventstore
 
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
 const defaultTenantId = TenantId("default")
 
 type TenantId string
@@ -14,10 +21,27 @@ func (at AggregateType) String() string {
 	return string(at)
 }
 
-type AggregateVersion uint
+type AggregateVersion string
 
-func (av AggregateVersion) Uint() uint {
-	return uint(av)
+var aggregateVersionRegexp = regexp.MustCompile(`^v[0-9]+(\.[0-9]+){0,2}$`)
+
+func (av AggregateVersion) String() string {
+	return string(av)
+}
+
+func (av AggregateVersion) Int() (int, error) {
+	aggregateVersion, err := strconv.Atoi(strings.TrimPrefix(string(av), "v"))
+	if err != nil {
+		return 0, fmt.Errorf("aggregate version invalid: %w", err)
+	}
+	return aggregateVersion, nil
+}
+
+func (av AggregateVersion) Validate() error {
+	if !aggregateVersionRegexp.MatchString(string(av)) {
+		return fmt.Errorf("error aggregate version invalid %s", av)
+	}
+	return nil
 }
 
 type AggregateId string
