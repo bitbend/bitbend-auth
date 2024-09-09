@@ -50,7 +50,6 @@ retry:
 			if !errors.As(err, &pgErr) || pgErr.ConstraintName != "events_pk" || pgErr.SQLState() != "23505" {
 				break retry
 			}
-			return nil, err
 		}
 	}
 
