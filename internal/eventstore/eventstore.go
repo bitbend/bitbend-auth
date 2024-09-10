@@ -37,6 +37,9 @@ func (es *EventStore) withTxn(ctx context.Context, txOptions pgx.TxOptions, fn f
 	}()
 
 	err = fn(tx, ctx)
+	if err != nil {
+		return err
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
