@@ -2,7 +2,7 @@ with existing as (
     %s
     )
 select events.tenant_id
-     , events.owner
+     , events.resource_owner
      , events.aggregate_type
      , events.aggregate_id
      , events.aggregate_sequence

@@ -1,14 +1,9 @@
 package eventstore
 
 import (
+	"github.com/shopspring/decimal"
 	"time"
 )
-
-type EventId string
-
-func (ei EventId) String() string {
-	return string(ei)
-}
 
 type EventType string
 
@@ -20,6 +15,8 @@ type action interface {
 	GetAggregate() *Aggregate
 	GetCreator() string
 	GetEventType() EventType
+	GetCorrelationId() *string
+	GetCausationId() *string
 }
 
 type Command interface {
@@ -30,9 +27,7 @@ type Command interface {
 
 type Event interface {
 	action
-	GetCorrelationId() *string
-	GetCausationId() *string
-	GetPosition() float64
+	GetPosition() decimal.Decimal
 	GetCreatedAt() time.Time
 	UnmarshalData(ptr any) error
 }

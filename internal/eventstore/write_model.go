@@ -5,12 +5,12 @@ import (
 )
 
 type WriteModel struct {
-	TenantId          TenantId
-	AggregateId       AggregateId
-	Events            []Event
-	Owner             string
-	ProcessedSequence uint64
-	UpdatedAt         time.Time
+	TenantId      TenantId
+	AggregateId   AggregateId
+	Events        []Event
+	ResourceOwner string
+	Sequence      uint64
+	UpdatedAt     time.Time
 }
 
 func (wm *WriteModel) AppendEvents(events ...Event) {
@@ -30,11 +30,12 @@ func (wm *WriteModel) Reduce() error {
 		wm.AggregateId = wm.Events[0].GetAggregate().Id
 	}
 
-	if wm.Owner == "" {
-		wm.Owner = wm.Events[0].GetAggregate().Owner
+	if wm.ResourceOwner == "" {
+		wm.ResourceOwner = wm.Events[0].GetAggregate().ResourceOwner
 	}
 
-	wm.ProcessedSequence = wm.Events[len(wm.Events)-1].GetAggregate().Sequence
+	wm.Sequence = wm.Events[len(wm.Events)-1].GetAggregate().Sequence
+
 	wm.UpdatedAt = wm.Events[len(wm.Events)-1].GetCreatedAt()
 
 	wm.Events = nil

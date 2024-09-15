@@ -1,6 +1,13 @@
 package eventstore
 
-const defaultTenantId = TenantId("default")
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+const defaultTenantId = TenantId("global")
 
 type TenantId string
 
@@ -14,10 +21,27 @@ func (at AggregateType) String() string {
 	return string(at)
 }
 
-type AggregateVersion uint
+type AggregateVersion string
 
-func (av AggregateVersion) Uint() uint {
-	return uint(av)
+var aggregateVersionRegexp = regexp.MustCompile(`^v[0-9]+(\.[0-9]+){0,2}$`)
+
+func (av AggregateVersion) String() string {
+	return string(av)
+}
+
+func (av AggregateVersion) Int() (int, error) {
+	aggregateVersion, err := strconv.Atoi(strings.TrimPrefix(string(av), "v"))
+	if err != nil {
+		return 0, fmt.Errorf("aggregate version invalid: %w", err)
+	}
+	return aggregateVersion, nil
+}
+
+func (av AggregateVersion) Validate() error {
+	if !aggregateVersionRegexp.MatchString(string(av)) {
+		return fmt.Errorf("error aggregate version invalid %s", av)
+	}
+	return nil
 }
 
 type AggregateId string
@@ -27,12 +51,12 @@ func (ai AggregateId) String() string {
 }
 
 type Aggregate struct {
-	TenantId TenantId         `json:"-"`
-	Type     AggregateType    `json:"-"`
-	Version  AggregateVersion `json:"-"`
-	Id       AggregateId      `json:"-"`
-	Sequence uint64           `json:"-"`
-	Owner    string           `json:"-"`
+	TenantId      TenantId         `json:"-"`
+	Type          AggregateType    `json:"-"`
+	Version       AggregateVersion `json:"-"`
+	Id            AggregateId      `json:"-"`
+	ResourceOwner string           `json:"-"`
+	Sequence      uint64           `json:"-"`
 }
 
 func NewAggregate(
@@ -40,15 +64,15 @@ func NewAggregate(
 	aggregateType AggregateType,
 	aggregateVersion AggregateVersion,
 	aggregateId AggregateId,
+	resourceOwner string,
 	sequence uint64,
-	owner string,
 ) *Aggregate {
 	return &Aggregate{
-		TenantId: tenantId,
-		Type:     aggregateType,
-		Version:  aggregateVersion,
-		Id:       aggregateId,
-		Sequence: sequence,
-		Owner:    owner,
+		TenantId:      tenantId,
+		Type:          aggregateType,
+		Version:       aggregateVersion,
+		Id:            aggregateId,
+		ResourceOwner: resourceOwner,
+		Sequence:      sequence,
 	}
 }

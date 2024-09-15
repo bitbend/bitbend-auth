@@ -9,19 +9,19 @@ import (
 )
 
 var (
-	//go:embed sequence_latest.sql
-	sequenceLatestStmt string
+	//go:embed sequence.sql
+	sequenceStmt string
 )
 
 type latestSequence struct {
 	aggregate *Aggregate
 }
 
-func latestSequences(ctx context.Context, tx pgx.Tx, commands ...Command) ([]*latestSequence, error) {
+func latestSequences(ctx context.Context, tx pgx.Tx, commands []Command) ([]*latestSequence, error) {
 	sequences := commandsToSequences(ctx, commands)
 
 	placeholders, args := sequencesToSql(sequences)
-	rows, err := tx.Query(ctx, fmt.Sprintf(sequenceLatestStmt, strings.Join(placeholders, " union all ")), args...)
+	rows, err := tx.Query(ctx, fmt.Sprintf(sequenceStmt, strings.Join(placeholders, " union all ")), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query latest sequences: %w", err)
 	}
@@ -115,8 +115,8 @@ func scanToSequence(rows pgx.Rows, sequences []*latestSequence) error {
 
 	sequence.aggregate.Sequence = currentSequence
 
-	if sequence.aggregate.Owner == "" {
-		sequence.aggregate.Owner = owner
+	if sequence.aggregate.ResourceOwner == "" {
+		sequence.aggregate.ResourceOwner = owner
 	}
 
 	return nil

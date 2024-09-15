@@ -2,22 +2,21 @@ package eventstore
 
 import (
 	"encoding/json"
+	"github.com/shopspring/decimal"
 	"time"
 )
 
 var _ Event = (*EventBase)(nil)
 
 type EventBase struct {
-	Aggregate                     *Aggregate `json:"-"`
-	EventType                     EventType  `json:"-"`
-	previousAggregateSequence     uint64
-	previousAggregateTypeSequence uint64
-	Data                          []byte    `json:"-"`
-	Creator                       string    `json:"-"`
-	CorrelationId                 *string   `json:"-"`
-	CausationId                   *string   `json:"-"`
-	Position                      float64   `json:"-"`
-	CreatedAt                     time.Time `json:"-"`
+	Aggregate     *Aggregate      `json:"-"`
+	EventType     EventType       `json:"-"`
+	Data          []byte          `json:"-"`
+	Creator       string          `json:"-"`
+	CorrelationId *string         `json:"-"`
+	CausationId   *string         `json:"-"`
+	Position      decimal.Decimal `json:"-"`
+	CreatedAt     time.Time       `json:"-"`
 }
 
 func (eb *EventBase) SetCorrelationId(correlationId string) *EventBase {
@@ -50,7 +49,7 @@ func (eb *EventBase) GetCausationId() *string {
 	return eb.CausationId
 }
 
-func (eb *EventBase) GetPosition() float64 {
+func (eb *EventBase) GetPosition() decimal.Decimal {
 	return eb.Position
 }
 
@@ -60,4 +59,16 @@ func (eb *EventBase) GetCreatedAt() time.Time {
 
 func (eb *EventBase) UnmarshalData(ptr any) error {
 	return json.Unmarshal(eb.Data, ptr)
+}
+
+func EventBaseFromEvent(event Event) *EventBase {
+	return &EventBase{
+		Aggregate:     event.GetAggregate(),
+		EventType:     event.GetEventType(),
+		Creator:       event.GetCreator(),
+		CorrelationId: event.GetCorrelationId(),
+		CausationId:   event.GetCausationId(),
+		Position:      event.GetPosition(),
+		CreatedAt:     event.GetCreatedAt(),
+	}
 }

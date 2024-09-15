@@ -19,9 +19,9 @@ func (ut UniqueType) String() string {
 type UniqueConstraintAction string
 
 const (
-	UniqueConstraintActionAdd           UniqueConstraintAction = "add"
-	UniqueConstraintActionRemove        UniqueConstraintAction = "remove"
-	UniqueConstraintActionTenantRemoved UniqueConstraintAction = "tenant_removed"
+	UniqueConstraintActionAdd          UniqueConstraintAction = "add"
+	UniqueConstraintActionRemove       UniqueConstraintAction = "remove"
+	UniqueConstraintActionTenantRemove UniqueConstraintAction = "tenant_remove"
 )
 
 type UniqueConstraint struct {
@@ -55,9 +55,9 @@ var (
 	uniqueConstraintsDeleteStmt string
 )
 
-const uniqueConstraintPlaceholder = "(%s, %s, %s)"
+const uniqueConstraintErrorDetailPlaceholder = "(%s, %s, %s)"
 
-func handleUniqueConstraints(ctx context.Context, tx pgx.Tx, commands ...Command) error {
+func handleUniqueConstraints(ctx context.Context, tx pgx.Tx, commands []Command) error {
 	deletePlaceholders := make([]string, 0)
 	deleteArgs := make([]any, 0)
 	deleteConstraints := map[string]*UniqueConstraint{}
@@ -76,15 +76,15 @@ func handleUniqueConstraints(ctx context.Context, tx pgx.Tx, commands ...Command
 			case UniqueConstraintActionAdd:
 				addPlaceholders = append(addPlaceholders, fmt.Sprintf("($%d, $%d, $%d)", len(addArgs)+1, len(addArgs)+2, len(addArgs)+3))
 				addArgs = append(addArgs, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)
-				addConstraints[fmt.Sprintf(uniqueConstraintPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
+				addConstraints[fmt.Sprintf(uniqueConstraintErrorDetailPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
 			case UniqueConstraintActionRemove:
 				deletePlaceholders = append(deletePlaceholders, fmt.Sprintf("(tenant_id = $%d and unique_type = $%d and unique_value = $%d)", len(deleteArgs)+1, len(deleteArgs)+2, len(deleteArgs)+3))
 				deleteArgs = append(deleteArgs, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)
-				deleteConstraints[fmt.Sprintf(uniqueConstraintPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
-			case UniqueConstraintActionTenantRemoved:
+				deleteConstraints[fmt.Sprintf(uniqueConstraintErrorDetailPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
+			case UniqueConstraintActionTenantRemove:
 				deletePlaceholders = append(deletePlaceholders, fmt.Sprintf("(tenant_id = $%d)", len(deleteArgs)+1))
 				deleteArgs = append(deleteArgs, tenantId.String())
-				deleteConstraints[fmt.Sprintf(uniqueConstraintPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
+				deleteConstraints[fmt.Sprintf(uniqueConstraintErrorDetailPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
 			}
 		}
 	}
