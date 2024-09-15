@@ -6,8 +6,20 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"sort"
 	"sync"
 	"time"
+)
+
+type eventTypeInterceptors struct {
+	eventMapper func(Event) (Event, error)
+}
+
+var (
+	eventInterceptors map[EventType]eventTypeInterceptors
+	eventTypes        []string
+	aggregateTypes    []string
+	eventTypeMapping  = map[EventType]AggregateType{}
 )
 
 type EventStore struct {
@@ -47,4 +59,61 @@ func (es *EventStore) withTxn(ctx context.Context, txOptions pgx.TxOptions, fn f
 	}
 
 	return nil
+}
+
+func (es *EventStore) mapEvents(events []Event) (mappedEvents []Event, err error) {
+	mappedEvents = make([]Event, len(events))
+	for i, event := range events {
+		mappedEvents[i], err = es.mapEventLocked(event)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return mappedEvents, nil
+}
+
+func (es *EventStore) mapEvent(event Event) (Event, error) {
+	return es.mapEventLocked(event)
+}
+
+func (es *EventStore) mapEventLocked(event Event) (Event, error) {
+	interceptors, ok := eventInterceptors[event.GetEventType()]
+	if !ok || interceptors.eventMapper == nil {
+		return EventBaseFromEvent(event), nil
+	}
+	return interceptors.eventMapper(event)
+}
+
+func RegisterEventMapper(aggregateType AggregateType, eventType EventType, mapper func(Event) (Event, error)) {
+	if mapper == nil || eventType == "" {
+		return
+	}
+
+	appendEventType(eventType)
+	appendAggregateType(aggregateType)
+
+	if eventInterceptors == nil {
+		eventInterceptors = make(map[EventType]eventTypeInterceptors)
+	}
+
+	interceptor := eventInterceptors[eventType]
+	interceptor.eventMapper = mapper
+	eventInterceptors[eventType] = interceptor
+	eventTypeMapping[eventType] = aggregateType
+}
+
+func appendEventType(typ EventType) {
+	i := sort.SearchStrings(eventTypes, string(typ))
+	if i < len(eventTypes) && eventTypes[i] == string(typ) {
+		return
+	}
+	eventTypes = append(eventTypes[:i], append([]string{string(typ)}, eventTypes[i:]...)...)
+}
+
+func appendAggregateType(typ AggregateType) {
+	i := sort.SearchStrings(aggregateTypes, string(typ))
+	if len(aggregateTypes) > i && aggregateTypes[i] == string(typ) {
+		return
+	}
+	aggregateTypes = append(aggregateTypes[:i], append([]string{string(typ)}, aggregateTypes[i:]...)...)
 }
