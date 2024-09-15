@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/shopspring/decimal"
 	"strings"
 	"time"
 )
@@ -53,7 +54,14 @@ retry:
 		}
 	}
 
-	return events, nil
+	mappedEvents, err := es.mapEvents(events)
+	if err != nil {
+		return nil, err
+	}
+
+	es.notify(mappedEvents)
+
+	return mappedEvents, nil
 }
 
 func insertEvents(ctx context.Context, tx pgx.Tx, sequences []*latestSequence, commands []Command) ([]Event, error) {
@@ -123,7 +131,7 @@ func mapCommands(commands []Command, sequences []*latestSequence) (events []Even
 
 		aggregateVersion, err := events[i].(*event).aggregate.Version.Int()
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to parse event version: %w", err)
+			return nil, nil, nil, err
 		}
 		args = append(args,
 			events[i].(*event).aggregate.TenantId.String(),
@@ -133,7 +141,7 @@ func mapCommands(commands []Command, sequences []*latestSequence) (events []Even
 			events[i].(*event).aggregate.Sequence,
 			events[i].(*event).eventType.String(),
 			events[i].(*event).payload,
-			events[i].(*event).aggregate.Owner,
+			events[i].(*event).aggregate.ResourceOwner,
 			events[i].(*event).creator,
 			events[i].(*event).correlationId,
 			events[i].(*event).causationId,
@@ -152,7 +160,7 @@ type event struct {
 	creator       string
 	correlationId *string
 	causationId   *string
-	position      float64
+	position      decimal.Decimal
 	createdAt     time.Time
 }
 
@@ -176,7 +184,7 @@ func (e *event) GetCausationId() *string {
 	return e.causationId
 }
 
-func (e *event) GetPosition() float64 {
+func (e *event) GetPosition() decimal.Decimal {
 	return e.position
 }
 
