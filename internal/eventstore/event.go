@@ -1,6 +1,7 @@
 package eventstore
 
 import (
+	"github.com/shopspring/decimal"
 	"time"
 )
 
@@ -26,7 +27,7 @@ type Command interface {
 
 type Event interface {
 	action
-	GetPosition() float64
+	GetPosition() decimal.Decimal
 	GetCreatedAt() time.Time
 	UnmarshalData(ptr any) error
 }
