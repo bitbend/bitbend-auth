@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const defaultTenantId = TenantId("default")
+const defaultTenantId = TenantId("global")
 
 type TenantId string
 
@@ -51,12 +51,12 @@ func (ai AggregateId) String() string {
 }
 
 type Aggregate struct {
-	TenantId TenantId         `json:"-"`
-	Type     AggregateType    `json:"-"`
-	Version  AggregateVersion `json:"-"`
-	Id       AggregateId      `json:"-"`
-	Sequence uint64           `json:"-"`
-	Owner    string           `json:"-"`
+	TenantId      TenantId         `json:"-"`
+	Type          AggregateType    `json:"-"`
+	Version       AggregateVersion `json:"-"`
+	Id            AggregateId      `json:"-"`
+	ResourceOwner string           `json:"-"`
+	Sequence      uint64           `json:"-"`
 }
 
 func NewAggregate(
@@ -64,15 +64,15 @@ func NewAggregate(
 	aggregateType AggregateType,
 	aggregateVersion AggregateVersion,
 	aggregateId AggregateId,
+	resourceOwner string,
 	sequence uint64,
-	owner string,
 ) *Aggregate {
 	return &Aggregate{
-		TenantId: tenantId,
-		Type:     aggregateType,
-		Version:  aggregateVersion,
-		Id:       aggregateId,
-		Sequence: sequence,
-		Owner:    owner,
+		TenantId:      tenantId,
+		Type:          aggregateType,
+		Version:       aggregateVersion,
+		Id:            aggregateId,
+		ResourceOwner: resourceOwner,
+		Sequence:      sequence,
 	}
 }

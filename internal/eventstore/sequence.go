@@ -115,8 +115,8 @@ func scanToSequence(rows pgx.Rows, sequences []*latestSequence) error {
 
 	sequence.aggregate.Sequence = currentSequence
 
-	if sequence.aggregate.Owner == "" {
-		sequence.aggregate.Owner = owner
+	if sequence.aggregate.ResourceOwner == "" {
+		sequence.aggregate.ResourceOwner = owner
 	}
 
 	return nil
