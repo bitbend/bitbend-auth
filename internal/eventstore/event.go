@@ -29,5 +29,5 @@ type Event interface {
 	action
 	GetPosition() decimal.Decimal
 	GetCreatedAt() time.Time
-	UnmarshalData(ptr any) error
+	UnmarshalPayload(ptr any) error
 }

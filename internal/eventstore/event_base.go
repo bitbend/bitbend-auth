@@ -11,7 +11,7 @@ var _ Event = (*EventBase)(nil)
 type EventBase struct {
 	Aggregate     *Aggregate      `json:"-"`
 	EventType     EventType       `json:"-"`
-	Data          []byte          `json:"-"`
+	Payload       []byte          `json:"-"`
 	Creator       string          `json:"-"`
 	CorrelationId *string         `json:"-"`
 	CausationId   *string         `json:"-"`
@@ -57,8 +57,8 @@ func (eb *EventBase) GetCreatedAt() time.Time {
 	return eb.CreatedAt
 }
 
-func (eb *EventBase) UnmarshalData(ptr any) error {
-	return json.Unmarshal(eb.Data, ptr)
+func (eb *EventBase) UnmarshalPayload(ptr any) error {
+	return json.Unmarshal(eb.Payload, ptr)
 }
 
 func EventBaseFromEvent(event Event) *EventBase {

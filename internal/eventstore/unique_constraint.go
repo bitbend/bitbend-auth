@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"github.com/driftbase/auth/internal/sverror"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"strings"
@@ -92,22 +93,22 @@ func handleUniqueConstraints(ctx context.Context, tx pgx.Tx, commands []Command)
 	if len(deletePlaceholders) > 0 {
 		_, err := tx.Exec(ctx, fmt.Sprintf(uniqueConstraintsDeleteStmt, strings.Join(deletePlaceholders, " or ")), deleteArgs...)
 		if err != nil {
-			errorMessage := "error.internal"
 			if constraint := uniqueConstraintFromError(err, deleteConstraints); constraint != nil {
-				errorMessage = constraint.ErrorMessage
+				return sverror.NewAlreadyExistsError(constraint.ErrorMessage, nil)
+			} else {
+				return sverror.NewInternalError("error.failed.to.delete.unique.constraints", err)
 			}
-			return fmt.Errorf("failed to delete unique constraints: %s", errorMessage)
 		}
 	}
 
 	if len(addPlaceholders) > 0 {
 		_, err := tx.Exec(ctx, fmt.Sprintf(uniqueConstraintsAddStmt, strings.Join(addPlaceholders, ", ")), addArgs...)
 		if err != nil {
-			errorMessage := "error.internal"
 			if constraint := uniqueConstraintFromError(err, addConstraints); constraint != nil {
-				errorMessage = constraint.ErrorMessage
+				return sverror.NewAlreadyExistsError(constraint.ErrorMessage, nil)
+			} else {
+				return sverror.NewInternalError("error.failed.to.add.unique.constraints", err)
 			}
-			return fmt.Errorf("failed to add unique constraints: %s", errorMessage)
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"github.com/driftbase/auth/internal/sverror"
 	"github.com/jackc/pgx/v5"
 	"strings"
 )
@@ -23,18 +24,18 @@ func latestSequences(ctx context.Context, tx pgx.Tx, commands []Command) ([]*lat
 	placeholders, args := sequencesToSql(sequences)
 	rows, err := tx.Query(ctx, fmt.Sprintf(sequenceStmt, strings.Join(placeholders, " union all ")), args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query latest sequences: %w", err)
+		return nil, sverror.NewInternalError("error.failed.to.query.latest.sequences", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		if err := scanToSequence(rows, sequences); err != nil {
-			return nil, fmt.Errorf("failed to scan latest sequences: %w", err)
+			return nil, sverror.NewInternalError("error.failed.to.scan.latest.sequences", err)
 		}
 	}
 
 	if rows.Err() != nil {
-		return nil, fmt.Errorf("failed to scan latest sequences: %w", rows.Err())
+		return nil, sverror.NewInternalError("error.failed.to.scan.latest.sequences", rows.Err())
 	}
 
 	return sequences, nil
@@ -105,7 +106,7 @@ func scanToSequence(rows pgx.Rows, sequences []*latestSequence) error {
 	var owner string
 
 	if err := rows.Scan(&tenantId, &owner, &aggregateType, &aggregateId, &currentSequence); err != nil {
-		return fmt.Errorf("failed to scan row: %w", err)
+		return sverror.NewInternalError("error.failed.to.scan.rows", err)
 	}
 
 	sequence := searchSequence(sequences, aggregateType, aggregateId, tenantId)
