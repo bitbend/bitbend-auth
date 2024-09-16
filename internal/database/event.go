@@ -12,7 +12,7 @@ type Event struct {
 	AggregateId       string         `db:"aggregate_id" json:"aggregate_id"`
 	AggregateSequence int64          `db:"aggregate_sequence" json:"aggregate_sequence"`
 	EventType         string         `db:"event_type" json:"event_type"`
-	Data              []byte         `db:"data" json:"data"`
+	Payload           []byte         `db:"payload" json:"payload"`
 	Creator           sql.NullString `db:"creator" json:"creator"`
 	ResourceOwner     sql.NullString `db:"resource_owner" json:"resource_owner"`
 	CorrelationId     sql.NullString `db:"correlation_id" json:"correlation_id"`
