@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/driftbase/auth/internal/sverror"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
@@ -87,10 +88,10 @@ func insertEvents(ctx context.Context, tx pgx.Tx, sequences []*latestSequence, c
 		var pgError *pgconn.PgError
 		if errors.As(err, &pgError) {
 			if pgError.Code == "40001" {
-				return nil, fmt.Errorf("transaction conflict: %w", err)
+				return nil, sverror.NewInternalError("error.transaction.conflict", err)
 			}
 		}
-		return nil, fmt.Errorf("failed to insert events: %w", err)
+		return nil, sverror.NewInternalError("error.failed.to.insert.events", err)
 	}
 
 	return events, nil
@@ -192,7 +193,7 @@ func (e *event) GetCreatedAt() time.Time {
 	return e.createdAt
 }
 
-func (e *event) UnmarshalData(ptr any) error {
+func (e *event) UnmarshalPayload(ptr any) error {
 	return json.Unmarshal(e.payload, ptr)
 }
 
@@ -201,9 +202,10 @@ func commandToEvent(sequence *latestSequence, command Command) (_ *event, err er
 	if command.GetPayload() != nil {
 		payload, err = json.Marshal(command.GetPayload())
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal payload: %w", err)
+			return nil, sverror.NewInternalError("error.failed.to.marshal.command.payload", err)
 		}
 	}
+
 	return &event{
 		aggregate:     sequence.aggregate,
 		eventType:     command.GetEventType(),

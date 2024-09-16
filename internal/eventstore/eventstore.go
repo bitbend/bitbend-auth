@@ -4,22 +4,12 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"github.com/driftbase/auth/internal/sverror"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"sort"
 	"sync"
 	"time"
-)
-
-type eventTypeInterceptors struct {
-	eventMapper func(Event) (Event, error)
-}
-
-var (
-	eventInterceptors map[EventType]eventTypeInterceptors
-	eventTypes        []string
-	aggregateTypes    []string
-	eventTypeMapping  = map[EventType]AggregateType{}
 )
 
 type EventStore struct {
@@ -28,13 +18,13 @@ type EventStore struct {
 	tenants         []string
 	lastTenantQuery time.Time
 	tenantMutex     sync.Mutex
-	pool            *pgxpool.Pool
+	db              *pgxpool.Pool
 }
 
 func (es *EventStore) withTxn(ctx context.Context, txOptions pgx.TxOptions, fn func(tx pgx.Tx, ctx context.Context) error) error {
-	tx, err := es.pool.BeginTx(ctx, txOptions)
+	tx, err := es.db.BeginTx(ctx, txOptions)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return sverror.NewInternalError("error.failed.to.begin.transaction", err)
 	}
 
 	defer func() {
@@ -43,7 +33,9 @@ func (es *EventStore) withTxn(ctx context.Context, txOptions pgx.TxOptions, fn f
 			panic(p)
 		} else if err != nil {
 			if rbErr := tx.Rollback(ctx); rbErr != nil {
-				err = fmt.Errorf("failed to rollback transaction: %v, original error: %w", rbErr, err)
+				err = sverror.NewInternalError("error.failed.to.rollback.transaction",
+					fmt.Errorf("rollback.error: %w, internal.error: %w", rbErr, err),
+				)
 			}
 		}
 	}()
@@ -55,7 +47,7 @@ func (es *EventStore) withTxn(ctx context.Context, txOptions pgx.TxOptions, fn f
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return sverror.NewInternalError("error.failed.to.commit.transaction", err)
 	}
 
 	return nil
