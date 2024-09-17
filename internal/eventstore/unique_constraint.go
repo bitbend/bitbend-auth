@@ -8,6 +8,11 @@ import (
 	"github.com/driftbase/auth/internal/sverror"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/stephenafamo/bob"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/im"
+	"log"
 	"strings"
 )
 
@@ -49,22 +54,23 @@ func NewUniqueConstraint(
 	}
 }
 
-var (
-	//go:embed unique_constraint_add.sql
-	uniqueConstraintsAddStmt string
-	//go:embed unique_constraint_delete.sql
-	uniqueConstraintsDeleteStmt string
-)
-
 const uniqueConstraintErrorDetailPlaceholder = "(%s, %s, %s)"
 
 func handleUniqueConstraints(ctx context.Context, tx pgx.Tx, commands []Command) error {
-	deletePlaceholders := make([]string, 0)
-	deleteArgs := make([]any, 0)
+	deleteConditions := make([]bob.Expression, 0)
+	deleteQuery := psql.Delete(
+		dm.From("unique_constraints"),
+	)
 	deleteConstraints := map[string]*UniqueConstraint{}
 
-	addPlaceholders := make([]string, 0)
-	addArgs := make([]any, 0)
+	addQuery := psql.Insert(
+		im.Into(
+			"unique_constraints",
+			"tenant_id",
+			"unique_type",
+			"unique_value",
+		),
+	)
 	addConstraints := map[string]*UniqueConstraint{}
 
 	for _, command := range commands {
@@ -75,23 +81,41 @@ func handleUniqueConstraints(ctx context.Context, tx pgx.Tx, commands []Command)
 			}
 			switch constraint.Action {
 			case UniqueConstraintActionAdd:
-				addPlaceholders = append(addPlaceholders, fmt.Sprintf("($%d, $%d, $%d)", len(addArgs)+1, len(addArgs)+2, len(addArgs)+3))
-				addArgs = append(addArgs, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)
+				addQuery.Apply(im.Values(psql.Arg(tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)))
 				addConstraints[fmt.Sprintf(uniqueConstraintErrorDetailPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
 			case UniqueConstraintActionRemove:
-				deletePlaceholders = append(deletePlaceholders, fmt.Sprintf("(tenant_id = $%d and unique_type = $%d and unique_value = $%d)", len(deleteArgs)+1, len(deleteArgs)+2, len(deleteArgs)+3))
-				deleteArgs = append(deleteArgs, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)
+				deleteConditions = append(deleteConditions,
+					psql.And(
+						psql.Quote("tenant_id").EQ(psql.Arg(tenantId.String())),
+						psql.Quote("unique_type").EQ(psql.Arg(constraint.UniqueType.String())),
+						psql.Quote("unique_value").EQ(psql.Arg(constraint.UniqueValue)),
+					),
+				)
 				deleteConstraints[fmt.Sprintf(uniqueConstraintErrorDetailPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
 			case UniqueConstraintActionTenantRemove:
-				deletePlaceholders = append(deletePlaceholders, fmt.Sprintf("(tenant_id = $%d)", len(deleteArgs)+1))
-				deleteArgs = append(deleteArgs, tenantId.String())
+				deleteConditions = append(deleteConditions,
+					psql.And(
+						psql.Quote("tenant_id").EQ(psql.Arg(tenantId.String())),
+					),
+				)
 				deleteConstraints[fmt.Sprintf(uniqueConstraintErrorDetailPlaceholder, tenantId.String(), constraint.UniqueType.String(), constraint.UniqueValue)] = constraint
 			}
 		}
 	}
 
-	if len(deletePlaceholders) > 0 {
-		_, err := tx.Exec(ctx, fmt.Sprintf(uniqueConstraintsDeleteStmt, strings.Join(deletePlaceholders, " or ")), deleteArgs...)
+	deleteQuery.Apply(
+		dm.Where(
+			psql.Or(deleteConditions...),
+		),
+	)
+
+	deleteStmt, deleteArgs, err := deleteQuery.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if len(deleteArgs) > 0 {
+		_, err := tx.Exec(ctx, deleteStmt, deleteArgs...)
 		if err != nil {
 			if constraint := uniqueConstraintFromError(err, deleteConstraints); constraint != nil {
 				return sverror.NewAlreadyExistsError(constraint.ErrorMessage, nil)
@@ -101,8 +125,13 @@ func handleUniqueConstraints(ctx context.Context, tx pgx.Tx, commands []Command)
 		}
 	}
 
-	if len(addPlaceholders) > 0 {
-		_, err := tx.Exec(ctx, fmt.Sprintf(uniqueConstraintsAddStmt, strings.Join(addPlaceholders, ", ")), addArgs...)
+	addStmt, addArgs, err := addQuery.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if len(addArgs) > 0 {
+		_, err := tx.Exec(ctx, addStmt, addArgs...)
 		if err != nil {
 			if constraint := uniqueConstraintFromError(err, addConstraints); constraint != nil {
 				return sverror.NewAlreadyExistsError(constraint.ErrorMessage, nil)

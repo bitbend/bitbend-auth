@@ -3,15 +3,12 @@ package eventstore
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"github.com/driftbase/auth/internal/sverror"
 	"github.com/jackc/pgx/v5"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
+	"log"
 	"strings"
-)
-
-var (
-	//go:embed sequence.sql
-	sequenceStmt string
 )
 
 type latestSequence struct {
@@ -21,8 +18,8 @@ type latestSequence struct {
 func latestSequences(ctx context.Context, tx pgx.Tx, commands []Command) ([]*latestSequence, error) {
 	sequences := commandsToSequences(ctx, commands)
 
-	placeholders, args := sequencesToSql(sequences)
-	rows, err := tx.Query(ctx, fmt.Sprintf(sequenceStmt, strings.Join(placeholders, " union all ")), args...)
+	stmt, args := sequencesToSql(sequences)
+	rows, err := tx.Query(ctx, stmt, args...)
 	if err != nil {
 		return nil, sverror.NewInternalError("error.failed.to.query.latest.sequences", err)
 	}
@@ -82,30 +79,54 @@ func commandsToSequences(ctx context.Context, commands []Command) []*latestSeque
 	return sequences
 }
 
-func sequencesToSql(sequences []*latestSequence) (placeholders []string, args []any) {
-	placeholders = make([]string, 0)
-	args = make([]any, 0)
+func sequencesToSql(sequences []*latestSequence) (string, []any) {
+	stmts := make([]string, 0)
+	args := make([]any, 0)
 
 	for _, sequence := range sequences {
-		placeholders = append(placeholders, fmt.Sprintf(`(select tenant_id, aggregate_type, aggregate_id, aggregate_sequence from events where tenant_id = $%d and aggregate_type = $%d and aggregate_id = $%d order by aggregate_sequence desc limit 1)`,
-			len(args)+1,
-			len(args)+2,
-			len(args)+3,
-		))
+		stmts = append(stmts, `(SELECT tenant_id, aggregate_type, aggregate_id, aggregate_sequence FROM events WHERE tenant_id = ? AND aggregate_type = ? AND aggregate_id = ? ORDER BY aggregate_sequence DESC LIMIT 1)`)
 		args = append(args, sequence.aggregate.TenantId.String(), sequence.aggregate.Type.String(), sequence.aggregate.Id.String())
 	}
 
-	return placeholders, args
+	subQuery := psql.RawQuery(strings.Join(stmts, " UNION ALL "), args...)
+
+	query := psql.Select(
+		sm.With("existing").As(subQuery),
+		sm.From("events"),
+		sm.Columns(
+			psql.Quote("events", "tenant_id"),
+			psql.Quote("events", "resource_owner"),
+			psql.Quote("events", "aggregate_type"),
+			psql.Quote("events", "aggregate_id"),
+			psql.Quote("events", "aggregate_sequence"),
+		),
+		sm.InnerJoin("existing").On(
+			psql.And(
+				psql.Quote("events", "tenant_id").EQ(psql.Quote("existing", "tenant_id")),
+				psql.Quote("events", "aggregate_type").EQ(psql.Quote("existing", "aggregate_type")),
+				psql.Quote("events", "aggregate_id").EQ(psql.Quote("existing", "aggregate_id")),
+				psql.Quote("events", "aggregate_sequence").EQ(psql.Quote("existing", "aggregate_sequence")),
+			),
+		),
+		sm.ForUpdate(),
+	)
+
+	stmt, args, err := query.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return stmt, args
 }
 
 func scanToSequence(rows pgx.Rows, sequences []*latestSequence) error {
 	var tenantId TenantId
 	var aggregateType AggregateType
 	var aggregateId AggregateId
-	var currentSequence uint64
-	var owner string
+	var aggregateSequence uint64
+	var resourceOwner string
 
-	if err := rows.Scan(&tenantId, &owner, &aggregateType, &aggregateId, &currentSequence); err != nil {
+	if err := rows.Scan(&tenantId, &resourceOwner, &aggregateType, &aggregateId, &aggregateSequence); err != nil {
 		return sverror.NewInternalError("error.failed.to.scan.rows", err)
 	}
 
@@ -114,10 +135,10 @@ func scanToSequence(rows pgx.Rows, sequences []*latestSequence) error {
 		return nil
 	}
 
-	sequence.aggregate.Sequence = currentSequence
+	sequence.aggregate.Sequence = aggregateSequence
 
 	if sequence.aggregate.ResourceOwner == "" {
-		sequence.aggregate.ResourceOwner = owner
+		sequence.aggregate.ResourceOwner = resourceOwner
 	}
 
 	return nil

@@ -5,19 +5,15 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/driftbase/auth/internal/sverror"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
-	"strings"
+	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/im"
+	"log"
 	"time"
 )
-
-const pushPlaceholder = "($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, extract(epoch from clock_timestamp()), statement_timestamp())"
-
-//go:embed push.sql
-var pushStmt string
 
 func (es *EventStore) Push(ctx context.Context, commands ...Command) (events []Event, err error) {
 	var sequences []*latestSequence
@@ -66,12 +62,12 @@ retry:
 }
 
 func insertEvents(ctx context.Context, tx pgx.Tx, sequences []*latestSequence, commands []Command) ([]Event, error) {
-	events, placeholders, args, err := mapCommands(commands, sequences)
+	events, stmt, args, err := mapCommands(commands, sequences)
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := tx.Query(ctx, fmt.Sprintf(pushStmt, strings.Join(placeholders, ", ")), args...)
+	rows, err := tx.Query(ctx, stmt, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,59 +93,75 @@ func insertEvents(ctx context.Context, tx pgx.Tx, sequences []*latestSequence, c
 	return events, nil
 }
 
-func mapCommands(commands []Command, sequences []*latestSequence) (events []Event, placeholders []string, args []any, err error) {
-	events = make([]Event, 0)
-	args = make([]any, 0)
-	placeholders = make([]string, 0)
+func mapCommands(commands []Command, sequences []*latestSequence) ([]Event, string, []any, error) {
+	events := make([]Event, 0)
+	args := make([]any, 0)
+
+	query := psql.Insert(
+		im.Into(
+			"events",
+			"tenant_id",
+			"aggregate_type",
+			"aggregate_version",
+			"aggregate_id",
+			"aggregate_sequence",
+			"event_type",
+			"payload",
+			"resource_owner",
+			"creator",
+			"correlation_id",
+			"causation_id",
+			"global_position",
+			"created_at",
+		),
+		im.Returning("global_position", "created_at"),
+	)
 
 	for i, command := range commands {
 		sequence := searchSequenceByCommand(sequences, command)
 		if sequence == nil {
-			return nil, nil, nil, nil
+			return nil, "", nil, nil
 		}
 		sequence.aggregate.Sequence++
 
 		var commandEvent Event
-		commandEvent, err = commandToEvent(sequence, command)
+		commandEvent, err := commandToEvent(sequence, command)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, "", nil, err
 		}
 		events = append(events, commandEvent)
 
-		placeholders = append(placeholders, fmt.Sprintf(pushPlaceholder,
-			len(args)+1,
-			len(args)+2,
-			len(args)+3,
-			len(args)+4,
-			len(args)+5,
-			len(args)+6,
-			len(args)+7,
-			len(args)+8,
-			len(args)+9,
-			len(args)+10,
-			len(args)+11,
-		))
-
 		aggregateVersion, err := events[i].(*event).aggregate.Version.Int()
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, "", nil, err
 		}
-		args = append(args,
-			events[i].(*event).aggregate.TenantId.String(),
-			events[i].(*event).aggregate.Type.String(),
-			aggregateVersion,
-			events[i].(*event).aggregate.Id.String(),
-			events[i].(*event).aggregate.Sequence,
-			events[i].(*event).eventType.String(),
-			events[i].(*event).payload,
-			events[i].(*event).aggregate.ResourceOwner,
-			events[i].(*event).creator,
-			events[i].(*event).correlationId,
-			events[i].(*event).causationId,
+		query.Apply(
+			im.Values(
+				psql.Arg(
+					events[i].(*event).aggregate.TenantId.String(),
+					events[i].(*event).aggregate.Type.String(),
+					aggregateVersion,
+					events[i].(*event).aggregate.Id.String(),
+					events[i].(*event).aggregate.Sequence,
+					events[i].(*event).eventType.String(),
+					events[i].(*event).payload,
+					events[i].(*event).aggregate.ResourceOwner,
+					events[i].(*event).creator,
+					events[i].(*event).correlationId,
+					events[i].(*event).causationId,
+				),
+				psql.Raw("extract(epoch from clock_timestamp())"),
+				psql.Raw("statement_timestamp()"),
+			),
 		)
 	}
 
-	return events, placeholders, args, nil
+	stmt, args, err := query.Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return events, stmt, args, nil
 }
 
 var _ Event = (*event)(nil)
