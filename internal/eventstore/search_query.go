@@ -54,7 +54,7 @@ const (
 type SearchQueryBuilder struct {
 	columns               SearchColumns
 	awaitOpenTransactions bool
-	tenantIds             []string
+	tenantIds             []TenantId
 	resourceOwners        []string
 	creators              []string
 	queries               []*SearchQuery
@@ -73,7 +73,7 @@ func (sqb *SearchQueryBuilder) Columns(columns SearchColumns) *SearchQueryBuilde
 	return sqb
 }
 
-func (sqb *SearchQueryBuilder) TenantIds(tenantIds ...string) *SearchQueryBuilder {
+func (sqb *SearchQueryBuilder) TenantIds(tenantIds ...TenantId) *SearchQueryBuilder {
 	sqb.tenantIds = tenantIds
 	return sqb
 }
