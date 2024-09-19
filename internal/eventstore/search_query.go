@@ -1,6 +1,7 @@
 package eventstore
 
 import (
+	"github.com/driftbase/auth/internal/sverror"
 	"github.com/shopspring/decimal"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
@@ -148,7 +149,7 @@ func (sqb *SearchQueryBuilder) ToSql() (string, []any, error) {
 				"aggregate_sequence",
 				"event_type",
 				"payload",
-				"creators",
+				"creator",
 				"resource_owner",
 				"correlation_id",
 				"causation_id",
@@ -174,46 +175,17 @@ func (sqb *SearchQueryBuilder) ToSql() (string, []any, error) {
 		}
 	}
 
-	conditions := make([]bob.Expression, 0)
-	for _, query := range sqb.queries {
-		condition := make([]bob.Expression, 0)
-		if query.aggregateTypes != nil {
-			if len(query.aggregateTypes) == 1 {
-				condition = append(condition, psql.Quote("aggregate_type").EQ(psql.Arg(query.aggregateTypes[0])))
-			} else {
-				condition = append(condition, psql.Quote("aggregate_type").EQ(psql.Raw("ANY(?)", query.aggregateTypes)))
-			}
-		}
-
-		if query.aggregateIds != nil {
-			if len(query.aggregateIds) == 1 {
-				condition = append(condition, psql.Quote("aggregate_id").EQ(psql.Arg(query.aggregateIds[0])))
-			} else {
-				condition = append(condition, psql.Quote("aggregate_id").EQ(psql.Raw("ANY(?)", query.aggregateIds)))
-			}
-		}
-
-		if query.eventTypes != nil {
-			if len(query.eventTypes) == 1 {
-				condition = append(condition, psql.Quote("event_type").EQ(psql.Arg(query.eventTypes[0])))
-			} else {
-				condition = append(condition, psql.Quote("event_type").EQ(psql.Raw("ANY(?)", query.eventTypes)))
-			}
-		}
-
-		if query.payload != nil {
-			condition = append(condition, psql.Quote("payload").EQ(psql.Arg(query.payload)))
-		}
-
-		conditions = append(conditions, psql.And(condition...))
-	}
-
-	if len(conditions) > 0 {
+	if len(sqb.queries) > 0 {
+		conditions := buildSearchQuery(sqb.queries)
 		queryBuilder.Apply(
 			sm.Where(
-				psql.Or(conditions...),
+				psql.Or(
+					conditions...,
+				),
 			),
 		)
+	} else {
+		return "", nil, sverror.NewInternalError("error.invalid.search.query", nil)
 	}
 
 	if sqb.resourceOwners != nil {
@@ -236,13 +208,13 @@ func (sqb *SearchQueryBuilder) ToSql() (string, []any, error) {
 		if len(sqb.creators) == 1 {
 			queryBuilder.Apply(
 				sm.Where(
-					psql.Quote("creators").EQ(psql.Arg(sqb.creators)),
+					psql.Quote("creator").EQ(psql.Arg(sqb.creators[0])),
 				),
 			)
 		} else {
 			queryBuilder.Apply(
 				sm.Where(
-					psql.Quote("creators").EQ(psql.Raw("ANY(?)", sqb.creators)),
+					psql.Quote("creator").EQ(psql.Raw("ANY(?)", sqb.creators)),
 				),
 			)
 		}
@@ -319,4 +291,42 @@ func (sqb *SearchQueryBuilder) AddQuery() *SearchQuery {
 	sqb.queries = append(sqb.queries, query)
 
 	return query
+}
+
+func buildSearchQuery(searchQueries []*SearchQuery) []bob.Expression {
+	expressions := make([]bob.Expression, 0)
+	for _, searchQuery := range searchQueries {
+		condition := make([]bob.Expression, 0)
+		if searchQuery.aggregateTypes != nil {
+			if len(searchQuery.aggregateTypes) == 1 {
+				condition = append(condition, psql.Quote("aggregate_type").EQ(psql.Arg(searchQuery.aggregateTypes[0])))
+			} else {
+				condition = append(condition, psql.Quote("aggregate_type").EQ(psql.Raw("ANY(?)", searchQuery.aggregateTypes)))
+			}
+		}
+
+		if searchQuery.aggregateIds != nil {
+			if len(searchQuery.aggregateIds) == 1 {
+				condition = append(condition, psql.Quote("aggregate_id").EQ(psql.Arg(searchQuery.aggregateIds[0])))
+			} else {
+				condition = append(condition, psql.Quote("aggregate_id").EQ(psql.Raw("ANY(?)", searchQuery.aggregateIds)))
+			}
+		}
+
+		if searchQuery.eventTypes != nil {
+			if len(searchQuery.eventTypes) == 1 {
+				condition = append(condition, psql.Quote("event_type").EQ(psql.Arg(searchQuery.eventTypes[0])))
+			} else {
+				condition = append(condition, psql.Quote("event_type").EQ(psql.Raw("ANY(?)", searchQuery.eventTypes)))
+			}
+		}
+
+		if searchQuery.payload != nil {
+			condition = append(condition, psql.Quote("payload").EQ(psql.Arg(searchQuery.payload)))
+		}
+
+		expressions = append(expressions, psql.And(condition...))
+	}
+
+	return expressions
 }
