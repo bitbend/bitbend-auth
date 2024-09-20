@@ -1,7 +1,6 @@
 package eventstore
 
 import (
-	"github.com/driftbase/auth/internal/sverror"
 	"github.com/shopspring/decimal"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
@@ -45,32 +44,19 @@ func (sq *SearchQuery) Build() *SearchQueryBuilder {
 	return sq.builder
 }
 
-type SearchColumns string
-
-const (
-	SearchColumnsEvent SearchColumns = "event"
-)
-
 type SearchQueryBuilder struct {
-	columns               SearchColumns
-	awaitOpenTransactions bool
-	tenantIds             []TenantId
-	resourceOwners        []string
-	creators              []string
-	queries               []*SearchQuery
-	createdAfter          time.Time
-	createdBefore         time.Time
-	allowTimeTravel       bool
-	positionGreaterEqual  decimal.Decimal
-	sequenceGreaterEqual  uint64
-	desc                  bool
-	limit                 uint64
-	offset                uint64
-}
-
-func (sqb *SearchQueryBuilder) Columns(columns SearchColumns) *SearchQueryBuilder {
-	sqb.columns = columns
-	return sqb
+	tenantIds            []TenantId
+	resourceOwners       []string
+	creators             []string
+	queries              []*SearchQuery
+	createdAfter         time.Time
+	createdBefore        time.Time
+	allowTimeTravel      bool
+	positionGreaterEqual decimal.Decimal
+	sequenceGreaterEqual uint64
+	desc                 bool
+	limit                uint64
+	offset               uint64
 }
 
 func (sqb *SearchQueryBuilder) TenantIds(tenantIds ...TenantId) *SearchQueryBuilder {
@@ -134,153 +120,11 @@ func (sqb *SearchQueryBuilder) Offset(offset uint64) *SearchQueryBuilder {
 }
 
 func (sqb *SearchQueryBuilder) ToSql() (string, []any, error) {
-	queryBuilder := psql.Select(
-		sm.From("events"),
-	)
-
-	switch sqb.columns {
-	case SearchColumnsEvent:
-		queryBuilder.Apply(
-			sm.Columns(
-				"tenant_id",
-				"aggregate_type",
-				"aggregate_version",
-				"aggregate_id",
-				"aggregate_sequence",
-				"event_type",
-				"payload",
-				"creator",
-				"resource_owner",
-				"correlation_id",
-				"causation_id",
-				"global_position",
-				"created_at",
-			),
-		)
-	}
-
-	if sqb.tenantIds != nil {
-		if len(sqb.tenantIds) == 1 {
-			queryBuilder.Apply(
-				sm.Where(
-					psql.Quote("tenant_id").EQ(psql.Arg(sqb.tenantIds[0])),
-				),
-			)
-		} else {
-			queryBuilder.Apply(
-				sm.Where(
-					psql.Quote("tenant_id").EQ(psql.Raw("ANY(?)", sqb.tenantIds)),
-				),
-			)
-		}
-	}
-
-	if len(sqb.queries) > 0 {
-		conditions := buildSearchQuery(sqb.queries)
-		queryBuilder.Apply(
-			sm.Where(
-				psql.Or(
-					conditions...,
-				),
-			),
-		)
-	} else {
-		return "", nil, sverror.NewInternalError("error.invalid.search.query", nil)
-	}
-
-	if sqb.resourceOwners != nil {
-		if len(sqb.resourceOwners) == 1 {
-			queryBuilder.Apply(
-				sm.Where(
-					psql.Quote("resource_owner").EQ(psql.Arg(sqb.resourceOwners[0])),
-				),
-			)
-		} else {
-			queryBuilder.Apply(
-				sm.Where(
-					psql.Quote("resource_owner").EQ(psql.Raw("ANY(?)", sqb.resourceOwners)),
-				),
-			)
-		}
-	}
-
-	if sqb.creators != nil {
-		if len(sqb.creators) == 1 {
-			queryBuilder.Apply(
-				sm.Where(
-					psql.Quote("creator").EQ(psql.Arg(sqb.creators[0])),
-				),
-			)
-		} else {
-			queryBuilder.Apply(
-				sm.Where(
-					psql.Quote("creator").EQ(psql.Raw("ANY(?)", sqb.creators)),
-				),
-			)
-		}
-	}
-
-	if !sqb.createdAfter.IsZero() {
-		queryBuilder.Apply(
-			sm.Where(
-				psql.Quote("created_at").GTE(psql.Arg(sqb.createdAfter)),
-			),
-		)
-	}
-
-	if !sqb.createdBefore.IsZero() {
-		queryBuilder.Apply(
-			sm.Where(
-				psql.Quote("created_at").LTE(psql.Arg(sqb.createdBefore)),
-			),
-		)
-	}
-
-	if !sqb.positionGreaterEqual.IsZero() {
-		queryBuilder.Apply(
-			sm.Where(
-				psql.Quote("global_position").GTE(psql.Arg(sqb.positionGreaterEqual)),
-			),
-		)
-	}
-
-	if sqb.sequenceGreaterEqual > 0 {
-		queryBuilder.Apply(
-			sm.Where(
-				psql.Quote("aggregate_sequence").GTE(psql.Arg(sqb.sequenceGreaterEqual)),
-			),
-		)
-	}
-
-	if sqb.desc {
-		queryBuilder.Apply(
-			sm.OrderBy("aggregate_sequence").Desc(),
-		)
-	} else {
-		queryBuilder.Apply(
-			sm.OrderBy("aggregate_sequence").Asc(),
-		)
-	}
-
-	if sqb.limit > 0 {
-		queryBuilder.Apply(
-			sm.Limit(sqb.limit),
-		)
-	}
-
-	if sqb.offset > 0 {
-		queryBuilder.Apply(
-			sm.Offset(sqb.offset),
-		)
-	}
-
-	return queryBuilder.Build()
+	return eventSearchQuery(sqb)
 }
 
-func NewSearchQueryBuilder(columns SearchColumns) *SearchQueryBuilder {
-	return &SearchQueryBuilder{
-		columns: columns,
-	}
+func NewSearchQueryBuilder() *SearchQueryBuilder {
+	return &SearchQueryBuilder{}
 }
 
 func (sqb *SearchQueryBuilder) AddQuery() *SearchQuery {
@@ -293,39 +137,175 @@ func (sqb *SearchQueryBuilder) AddQuery() *SearchQuery {
 	return query
 }
 
-func buildSearchQuery(searchQueries []*SearchQuery) []bob.Expression {
+func eventSearchQuery(builder *SearchQueryBuilder) (string, []any, error) {
+	query := psql.Select(
+		sm.From("events"),
+		sm.Columns(
+			"tenant_id",
+			"aggregate_type",
+			"aggregate_version",
+			"aggregate_id",
+			"aggregate_sequence",
+			"event_type",
+			"payload",
+			"creator",
+			"resource_owner",
+			"correlation_id",
+			"causation_id",
+			"global_position",
+			"created_at",
+		),
+	)
+
+	if builder.tenantIds != nil {
+		if len(builder.tenantIds) == 1 {
+			query.Apply(
+				sm.Where(
+					psql.Quote("tenant_id").EQ(psql.Arg(builder.tenantIds[0])),
+				),
+			)
+		} else {
+			query.Apply(
+				sm.Where(
+					psql.Quote("tenant_id").EQ(psql.Raw("ANY(?)", builder.tenantIds)),
+				),
+			)
+		}
+	}
+
+	if len(builder.queries) > 0 {
+		expressions := buildSearchQueryExpressions(builder.queries)
+		query.Apply(
+			sm.Where(
+				psql.Or(
+					expressions...,
+				),
+			),
+		)
+	}
+
+	if builder.resourceOwners != nil {
+		if len(builder.resourceOwners) == 1 {
+			query.Apply(
+				sm.Where(
+					psql.Quote("resource_owner").EQ(psql.Arg(builder.resourceOwners[0])),
+				),
+			)
+		} else {
+			query.Apply(
+				sm.Where(
+					psql.Quote("resource_owner").EQ(psql.Raw("ANY(?)", builder.resourceOwners)),
+				),
+			)
+		}
+	}
+
+	if builder.creators != nil {
+		if len(builder.creators) == 1 {
+			query.Apply(
+				sm.Where(
+					psql.Quote("creator").EQ(psql.Arg(builder.creators[0])),
+				),
+			)
+		} else {
+			query.Apply(
+				sm.Where(
+					psql.Quote("creator").EQ(psql.Raw("ANY(?)", builder.creators)),
+				),
+			)
+		}
+	}
+
+	if !builder.createdAfter.IsZero() {
+		query.Apply(
+			sm.Where(
+				psql.Quote("created_at").GTE(psql.Arg(builder.createdAfter)),
+			),
+		)
+	}
+
+	if !builder.createdBefore.IsZero() {
+		query.Apply(
+			sm.Where(
+				psql.Quote("created_at").LTE(psql.Arg(builder.createdBefore)),
+			),
+		)
+	}
+
+	if !builder.positionGreaterEqual.IsZero() {
+		query.Apply(
+			sm.Where(
+				psql.Quote("global_position").GTE(psql.Arg(builder.positionGreaterEqual)),
+			),
+		)
+	}
+
+	if builder.sequenceGreaterEqual > 0 {
+		query.Apply(
+			sm.Where(
+				psql.Quote("aggregate_sequence").GTE(psql.Arg(builder.sequenceGreaterEqual)),
+			),
+		)
+	}
+
+	if builder.desc {
+		query.Apply(
+			sm.OrderBy("aggregate_sequence").Desc(),
+		)
+	} else {
+		query.Apply(
+			sm.OrderBy("aggregate_sequence").Asc(),
+		)
+	}
+
+	if builder.limit > 0 {
+		query.Apply(
+			sm.Limit(builder.limit),
+		)
+	}
+
+	if builder.offset > 0 {
+		query.Apply(
+			sm.Offset(builder.offset),
+		)
+	}
+
+	return query.Build()
+}
+
+func buildSearchQueryExpressions(searchQueries []*SearchQuery) []bob.Expression {
 	expressions := make([]bob.Expression, 0)
 	for _, searchQuery := range searchQueries {
-		condition := make([]bob.Expression, 0)
+		expression := make([]bob.Expression, 0)
 		if searchQuery.aggregateTypes != nil {
 			if len(searchQuery.aggregateTypes) == 1 {
-				condition = append(condition, psql.Quote("aggregate_type").EQ(psql.Arg(searchQuery.aggregateTypes[0])))
+				expression = append(expression, psql.Quote("aggregate_type").EQ(psql.Arg(searchQuery.aggregateTypes[0])))
 			} else {
-				condition = append(condition, psql.Quote("aggregate_type").EQ(psql.Raw("ANY(?)", searchQuery.aggregateTypes)))
+				expression = append(expression, psql.Quote("aggregate_type").EQ(psql.Raw("ANY(?)", searchQuery.aggregateTypes)))
 			}
 		}
 
 		if searchQuery.aggregateIds != nil {
 			if len(searchQuery.aggregateIds) == 1 {
-				condition = append(condition, psql.Quote("aggregate_id").EQ(psql.Arg(searchQuery.aggregateIds[0])))
+				expression = append(expression, psql.Quote("aggregate_id").EQ(psql.Arg(searchQuery.aggregateIds[0])))
 			} else {
-				condition = append(condition, psql.Quote("aggregate_id").EQ(psql.Raw("ANY(?)", searchQuery.aggregateIds)))
+				expression = append(expression, psql.Quote("aggregate_id").EQ(psql.Raw("ANY(?)", searchQuery.aggregateIds)))
 			}
 		}
 
 		if searchQuery.eventTypes != nil {
 			if len(searchQuery.eventTypes) == 1 {
-				condition = append(condition, psql.Quote("event_type").EQ(psql.Arg(searchQuery.eventTypes[0])))
+				expression = append(expression, psql.Quote("event_type").EQ(psql.Arg(searchQuery.eventTypes[0])))
 			} else {
-				condition = append(condition, psql.Quote("event_type").EQ(psql.Raw("ANY(?)", searchQuery.eventTypes)))
+				expression = append(expression, psql.Quote("event_type").EQ(psql.Raw("ANY(?)", searchQuery.eventTypes)))
 			}
 		}
 
 		if searchQuery.payload != nil {
-			condition = append(condition, psql.Quote("payload").EQ(psql.Arg(searchQuery.payload)))
+			expression = append(expression, psql.Quote("payload").EQ(psql.Arg(searchQuery.payload)))
 		}
 
-		expressions = append(expressions, psql.And(condition...))
+		expression = append(expression, psql.And(expression...))
 	}
 
 	return expressions

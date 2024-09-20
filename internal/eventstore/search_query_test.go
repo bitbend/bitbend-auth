@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewSearchQueryBuilder(t *testing.T) {
-	tenantId := "tenant_01J81HPMKFAN9TJGGWGQ11SYWQ"
+	tenantId := TenantId("tenant_01J81HPMKFAN9TJGGWGQ11SYWQ")
 	//tenantIds := []string{
 	//	"tenant_01J81HR7KCHTVFD885E2SWH10T",
 	//	"tenant_01J81HS8432KC7VAJTV9VW01JR",
@@ -28,7 +28,7 @@ func TestNewSearchQueryBuilder(t *testing.T) {
 	//limit := uint64(100)
 	//offset := uint64(0)
 
-	baseQuery := NewSearchQueryBuilder(SearchColumnsEvent).
+	baseQuery := NewSearchQueryBuilder().
 		TenantIds(tenantId).
 		ResourceOwners(resourceOwner).
 		AddQuery().
