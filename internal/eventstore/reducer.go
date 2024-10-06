@@ -30,26 +30,30 @@ func (es *EventStore) Reduce(ctx context.Context, reducer Reducer) error {
 	}
 
 	for _, eventRow := range eventRows {
-		unmappedEvent := &event{
-			aggregate: NewAggregate(
+		unmappedEvent := &EventBase{
+			Aggregate: NewAggregate(
 				TenantId(eventRow.TenantId),
-				AggregateType(eventRow.AggregateType),
-				AggregateVersion("v"+strconv.Itoa(eventRow.AggregateVersion)),
-				AggregateId(eventRow.AggregateId),
-				eventRow.ResourceOwner.String,
-				uint64(eventRow.AggregateSequence),
+				AggregateType(eventRow.StreamType),
+				AggregateVersion("v"+strconv.Itoa(eventRow.StreamVersion)),
+				AggregateId(eventRow.StreamId),
+				eventRow.StreamOwner,
+				uint64(eventRow.StreamSequence),
 			),
-			eventType: EventType(eventRow.EventType),
-			payload:   eventRow.Payload,
-			createdAt: eventRow.CreatedAt,
+			EventType: EventType(eventRow.EventType),
+			Payload:   eventRow.Payload,
+			CreatedAt: eventRow.CreatedAt,
+		}
+		if eventRow.Creator.Valid {
+			creator := eventRow.Creator.String
+			unmappedEvent.Creator = &creator
 		}
 		if eventRow.CorrelationId.Valid {
 			correlationId := eventRow.CorrelationId.String
-			unmappedEvent.correlationId = &correlationId
+			unmappedEvent.CorrelationId = &correlationId
 		}
 		if eventRow.CausationId.Valid {
 			causationId := eventRow.CausationId.String
-			unmappedEvent.causationId = &causationId
+			unmappedEvent.CausationId = &causationId
 		}
 
 		mappedEvent, err := es.mapEvent(unmappedEvent)

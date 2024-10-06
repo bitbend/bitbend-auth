@@ -8,7 +8,6 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"log"
-	"strings"
 )
 
 type latestSequence struct {
@@ -80,34 +79,16 @@ func commandsToSequences(ctx context.Context, commands []Command) []*latestSeque
 }
 
 func sequencesToSql(sequences []*latestSequence) (string, []any) {
-	stmts := make([]string, 0)
-	args := make([]any, 0)
-
-	for _, sequence := range sequences {
-		stmts = append(stmts, `(SELECT tenant_id, aggregate_type, aggregate_id, aggregate_sequence FROM events WHERE tenant_id = ? AND aggregate_type = ? AND aggregate_id = ? ORDER BY aggregate_sequence DESC LIMIT 1)`)
-		args = append(args, sequence.aggregate.TenantId.String(), sequence.aggregate.Type.String(), sequence.aggregate.Id.String())
-	}
-
-	subQuery := psql.RawQuery(strings.Join(stmts, " UNION ALL "), args...)
-
 	query := psql.Select(
-		sm.With("existing").As(subQuery),
-		sm.From("events"),
+		sm.From("streams"),
 		sm.Columns(
-			psql.Quote("events", "tenant_id"),
-			psql.Quote("events", "resource_owner"),
-			psql.Quote("events", "aggregate_type"),
-			psql.Quote("events", "aggregate_id"),
-			psql.Quote("events", "aggregate_sequence"),
+			"tenant_id",
+			"id",
+			"stream_type",
+			"stream_sequence",
+			"stream_owner",
 		),
-		sm.InnerJoin("existing").On(
-			psql.And(
-				psql.Quote("events", "tenant_id").EQ(psql.Quote("existing", "tenant_id")),
-				psql.Quote("events", "aggregate_type").EQ(psql.Quote("existing", "aggregate_type")),
-				psql.Quote("events", "aggregate_id").EQ(psql.Quote("existing", "aggregate_id")),
-				psql.Quote("events", "aggregate_sequence").EQ(psql.Quote("existing", "aggregate_sequence")),
-			),
-		),
+		sm.OrderBy("stream_sequence").Desc(),
 		sm.ForUpdate(),
 	)
 
@@ -126,7 +107,7 @@ func scanToSequence(rows pgx.Rows, sequences []*latestSequence) error {
 	var aggregateSequence uint64
 	var resourceOwner string
 
-	if err := rows.Scan(&tenantId, &resourceOwner, &aggregateType, &aggregateId, &aggregateSequence); err != nil {
+	if err := rows.Scan(&tenantId, &aggregateId, &aggregateType, &aggregateSequence, &resourceOwner); err != nil {
 		return sverror.NewInternalError("error.failed.to.scan.rows", err)
 	}
 

@@ -8,11 +8,9 @@ import (
 	"github.com/driftbase/auth/internal/sverror"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/shopspring/decimal"
+	"github.com/oklog/ulid/v2"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/im"
-	"log"
-	"time"
 )
 
 func (es *EventStore) Push(ctx context.Context, commands ...Command) (events []Event, err error) {
@@ -32,7 +30,13 @@ retry:
 				return err
 			}
 
-			events, err = insertEvents(ctx, tx, sequences, commands)
+			events, err = mapCommandsToEvents(commands, sequences)
+
+			if err = insertStreams(ctx, tx, events); err != nil {
+				return err
+			}
+
+			events, err = insertEvents(ctx, tx, events)
 			if err != nil {
 				return err
 			}
@@ -61,8 +65,119 @@ retry:
 	return mappedEvents, nil
 }
 
-func insertEvents(ctx context.Context, tx pgx.Tx, sequences []*latestSequence, commands []Command) ([]Event, error) {
-	events, stmt, args, err := mapCommands(commands, sequences)
+func insertStreams(ctx context.Context, tx pgx.Tx, events []Event) error {
+	streams := eventsToAggregate(events)
+
+	query := psql.Insert(
+		im.Into(
+			"streams",
+			"tenant_id",
+			"id",
+			"stream_type",
+			"stream_version",
+			"stream_sequence",
+			"stream_owner",
+			"created_at",
+		),
+		im.OnConflict("id", "stream_type", "stream_sequence").DoNothing(),
+	)
+
+	for _, stream := range streams {
+		streamVersion, err := stream.Version.Int()
+		if err != nil {
+			return err
+		}
+
+		query.Apply(
+			im.Values(
+				psql.Arg(
+					stream.TenantId.String(),
+					stream.Id.String(),
+					stream.Type.String(),
+					streamVersion,
+					stream.Sequence,
+					stream.ResourceOwner,
+				),
+				psql.Raw("statement_timestamp()"),
+			),
+		)
+	}
+
+	stmt, args, err := query.Build()
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(ctx, stmt, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	if err := rows.Err(); err != nil {
+		var pgError *pgconn.PgError
+		if errors.As(err, &pgError) {
+			if pgError.Code == "40001" {
+				return sverror.NewInternalError("error.transaction.conflict", err)
+			}
+		}
+		return sverror.NewInternalError("error.failed.to.insert.streams", err)
+	}
+
+	return nil
+}
+
+func insertEvents(ctx context.Context, tx pgx.Tx, events []Event) ([]Event, error) {
+	query := psql.Insert(
+		im.Into(
+			"events",
+			"tenant_id",
+			"id",
+			"stream_id",
+			"stream_type",
+			"stream_version",
+			"stream_sequence",
+			"stream_owner",
+			"event_type",
+			"payload",
+			"creator",
+			"correlation_id",
+			"causation_id",
+			"global_position",
+			"created_at",
+		),
+		im.Returning("global_position", "created_at"),
+	)
+
+	for i, _ := range events {
+		aggregateVersion, err := events[i].(*EventBase).Aggregate.Version.Int()
+		if err != nil {
+			return nil, err
+		}
+
+		query.Apply(
+			im.Values(
+				psql.Arg(
+					events[i].(*EventBase).Aggregate.TenantId.String(),
+					ulid.Make(),
+					events[i].(*EventBase).Aggregate.Id.String(),
+					events[i].(*EventBase).Aggregate.Type.String(),
+					aggregateVersion,
+					events[i].(*EventBase).Aggregate.Sequence,
+					events[i].(*EventBase).Aggregate.ResourceOwner,
+					events[i].(*EventBase).EventType.String(),
+					events[i].(*EventBase).Payload,
+					events[i].(*EventBase).Creator,
+					events[i].(*EventBase).CorrelationId,
+					events[i].(*EventBase).CausationId,
+				),
+				psql.Raw("extract(epoch from clock_timestamp())"),
+				psql.Raw("statement_timestamp()"),
+			),
+		)
+	}
+
+	stmt, args, err := query.Build()
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +189,7 @@ func insertEvents(ctx context.Context, tx pgx.Tx, sequences []*latestSequence, c
 	defer rows.Close()
 
 	for i := 0; rows.Next(); i++ {
-		err = rows.Scan(&events[i].(*event).createdAt, &events[i].(*event).position)
+		err = rows.Scan(&events[i].(*EventBase).CreatedAt, &events[i].(*EventBase).Position)
 		if err != nil {
 			return nil, err
 		}
@@ -93,137 +208,76 @@ func insertEvents(ctx context.Context, tx pgx.Tx, sequences []*latestSequence, c
 	return events, nil
 }
 
-func mapCommands(commands []Command, sequences []*latestSequence) ([]Event, string, []any, error) {
+func mapCommandsToEvents(commands []Command, sequences []*latestSequence) ([]Event, error) {
 	events := make([]Event, 0)
-	args := make([]any, 0)
 
-	query := psql.Insert(
-		im.Into(
-			"events",
-			"tenant_id",
-			"aggregate_type",
-			"aggregate_version",
-			"aggregate_id",
-			"aggregate_sequence",
-			"event_type",
-			"payload",
-			"resource_owner",
-			"creator",
-			"correlation_id",
-			"causation_id",
-			"global_position",
-			"created_at",
-		),
-		im.Returning("global_position", "created_at"),
-	)
-
-	for i, command := range commands {
+	for _, command := range commands {
 		sequence := searchSequenceByCommand(sequences, command)
 		if sequence == nil {
-			return nil, "", nil, nil
+			return nil, nil
 		}
 		sequence.aggregate.Sequence++
 
 		var commandEvent Event
-		commandEvent, err := commandToEvent(sequence, command)
+		commandEvent, err := mapCommandToEvent(sequence, command)
 		if err != nil {
-			return nil, "", nil, err
+			return nil, err
 		}
 		events = append(events, commandEvent)
+	}
 
-		aggregateVersion, err := events[i].(*event).aggregate.Version.Int()
-		if err != nil {
-			return nil, "", nil, err
+	return events, nil
+}
+
+func eventsToAggregate(events []Event) []*Aggregate {
+	uniqueAggregates := make(map[string]*Aggregate)
+	var aggregates []*Aggregate
+
+	for _, evt := range events {
+		eventAggregate := evt.GetAggregate()
+		if eventAggregate == nil {
+			continue
 		}
-		query.Apply(
-			im.Values(
-				psql.Arg(
-					events[i].(*event).aggregate.TenantId.String(),
-					events[i].(*event).aggregate.Type.String(),
-					aggregateVersion,
-					events[i].(*event).aggregate.Id.String(),
-					events[i].(*event).aggregate.Sequence,
-					events[i].(*event).eventType.String(),
-					events[i].(*event).payload,
-					events[i].(*event).aggregate.ResourceOwner,
-					events[i].(*event).creator,
-					events[i].(*event).correlationId,
-					events[i].(*event).causationId,
-				),
-				psql.Raw("extract(epoch from clock_timestamp())"),
-				psql.Raw("statement_timestamp()"),
-			),
-		)
+
+		aggregateKey := eventAggregate.Type.String() + ":" + eventAggregate.Id.String()
+
+		if _, exists := uniqueAggregates[aggregateKey]; exists {
+			continue
+		}
+
+		uniqueAggregates[aggregateKey] = eventAggregate
+
+		aggregates = append(aggregates, eventAggregate)
 	}
 
-	stmt, args, err := query.Build()
-	if err != nil {
-		log.Fatal(err)
+	return aggregates
+}
+
+func mapCommandToEvent(sequence *latestSequence, command Command) (*EventBase, error) {
+	eventBase := &EventBase{
+		Aggregate: sequence.aggregate,
+		EventType: command.GetEventType(),
 	}
 
-	return events, stmt, args, nil
-}
-
-var _ Event = (*event)(nil)
-
-type event struct {
-	aggregate     *Aggregate
-	eventType     EventType
-	payload       []byte
-	creator       string
-	correlationId *string
-	causationId   *string
-	position      decimal.Decimal
-	createdAt     time.Time
-}
-
-func (e *event) GetAggregate() *Aggregate {
-	return e.aggregate
-}
-
-func (e *event) GetCreator() string {
-	return e.creator
-}
-
-func (e *event) GetEventType() EventType {
-	return e.eventType
-}
-
-func (e *event) GetCorrelationId() *string {
-	return e.correlationId
-}
-
-func (e *event) GetCausationId() *string {
-	return e.causationId
-}
-
-func (e *event) GetPosition() decimal.Decimal {
-	return e.position
-}
-
-func (e *event) GetCreatedAt() time.Time {
-	return e.createdAt
-}
-
-func (e *event) UnmarshalPayload(ptr any) error {
-	return json.Unmarshal(e.payload, ptr)
-}
-
-func commandToEvent(sequence *latestSequence, command Command) (_ *event, err error) {
-	var payload []byte
 	if command.GetPayload() != nil {
-		payload, err = json.Marshal(command.GetPayload())
+		payload, err := json.Marshal(command.GetPayload())
 		if err != nil {
 			return nil, sverror.NewInternalError("error.failed.to.marshal.command.payload", err)
 		}
+		eventBase.Payload = payload
 	}
 
-	return &event{
-		aggregate:     sequence.aggregate,
-		eventType:     command.GetEventType(),
-		payload:       payload,
-		creator:       command.GetCreator(),
-		correlationId: command.GetCorrelationId(),
-		causationId:   command.GetCausationId(),
-	}, nil
+	if command.GetCreator() != nil {
+		eventBase.Creator = command.GetCreator()
+	}
+
+	if command.GetCorrelationId() != nil {
+		eventBase.CorrelationId = command.GetCorrelationId()
+	}
+
+	if command.GetCausationId() != nil {
+		eventBase.CausationId = command.GetCausationId()
+	}
+
+	return eventBase, nil
 }

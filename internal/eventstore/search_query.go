@@ -142,14 +142,15 @@ func eventSearchQuery(builder *SearchQueryBuilder) (string, []any, error) {
 		sm.From("events"),
 		sm.Columns(
 			"tenant_id",
-			"aggregate_type",
-			"aggregate_version",
-			"aggregate_id",
-			"aggregate_sequence",
+			"id",
+			"stream_id",
+			"stream_type",
+			"stream_version",
+			"stream_sequence",
+			"stream_owner",
 			"event_type",
 			"payload",
 			"creator",
-			"resource_owner",
 			"correlation_id",
 			"causation_id",
 			"global_position",
@@ -188,13 +189,13 @@ func eventSearchQuery(builder *SearchQueryBuilder) (string, []any, error) {
 		if len(builder.resourceOwners) == 1 {
 			query.Apply(
 				sm.Where(
-					psql.Quote("resource_owner").EQ(psql.Arg(builder.resourceOwners[0])),
+					psql.Quote("stream_owner").EQ(psql.Arg(builder.resourceOwners[0])),
 				),
 			)
 		} else {
 			query.Apply(
 				sm.Where(
-					psql.Quote("resource_owner").EQ(psql.Raw("ANY(?)", builder.resourceOwners)),
+					psql.Quote("stream_owner").EQ(psql.Raw("ANY(?)", builder.resourceOwners)),
 				),
 			)
 		}
@@ -235,7 +236,7 @@ func eventSearchQuery(builder *SearchQueryBuilder) (string, []any, error) {
 	if !builder.positionGreaterEqual.IsZero() {
 		query.Apply(
 			sm.Where(
-				psql.Quote("global_position").GTE(psql.Arg(builder.positionGreaterEqual)),
+				psql.Quote("global_sequence").GTE(psql.Arg(builder.positionGreaterEqual)),
 			),
 		)
 	}
@@ -243,18 +244,18 @@ func eventSearchQuery(builder *SearchQueryBuilder) (string, []any, error) {
 	if builder.sequenceGreaterEqual > 0 {
 		query.Apply(
 			sm.Where(
-				psql.Quote("aggregate_sequence").GTE(psql.Arg(builder.sequenceGreaterEqual)),
+				psql.Quote("stream_sequence").GTE(psql.Arg(builder.sequenceGreaterEqual)),
 			),
 		)
 	}
 
 	if builder.desc {
 		query.Apply(
-			sm.OrderBy("aggregate_sequence").Desc(),
+			sm.OrderBy("stream_sequence").Desc(),
 		)
 	} else {
 		query.Apply(
-			sm.OrderBy("aggregate_sequence").Asc(),
+			sm.OrderBy("stream_sequence").Asc(),
 		)
 	}
 
@@ -279,17 +280,17 @@ func buildSearchQueryExpressions(searchQueries []*SearchQuery) []bob.Expression 
 		expression := make([]bob.Expression, 0)
 		if searchQuery.aggregateTypes != nil {
 			if len(searchQuery.aggregateTypes) == 1 {
-				expression = append(expression, psql.Quote("aggregate_type").EQ(psql.Arg(searchQuery.aggregateTypes[0])))
+				expression = append(expression, psql.Quote("stream_type").EQ(psql.Arg(searchQuery.aggregateTypes[0])))
 			} else {
-				expression = append(expression, psql.Quote("aggregate_type").EQ(psql.Raw("ANY(?)", searchQuery.aggregateTypes)))
+				expression = append(expression, psql.Quote("stream_type").EQ(psql.Raw("ANY(?)", searchQuery.aggregateTypes)))
 			}
 		}
 
 		if searchQuery.aggregateIds != nil {
 			if len(searchQuery.aggregateIds) == 1 {
-				expression = append(expression, psql.Quote("aggregate_id").EQ(psql.Arg(searchQuery.aggregateIds[0])))
+				expression = append(expression, psql.Quote("stream_id").EQ(psql.Arg(searchQuery.aggregateIds[0])))
 			} else {
-				expression = append(expression, psql.Quote("aggregate_id").EQ(psql.Raw("ANY(?)", searchQuery.aggregateIds)))
+				expression = append(expression, psql.Quote("stream_id").EQ(psql.Raw("ANY(?)", searchQuery.aggregateIds)))
 			}
 		}
 
@@ -305,7 +306,7 @@ func buildSearchQueryExpressions(searchQueries []*SearchQuery) []bob.Expression 
 			expression = append(expression, psql.Quote("payload").EQ(psql.Arg(searchQuery.payload)))
 		}
 
-		expression = append(expression, psql.And(expression...))
+		expressions = append(expressions, psql.And(expression...))
 	}
 
 	return expressions
