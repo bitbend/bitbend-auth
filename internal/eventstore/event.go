@@ -13,7 +13,7 @@ func (et EventType) String() string {
 
 type action interface {
 	GetAggregate() *Aggregate
-	GetCreator() string
+	GetCreator() *string
 	GetEventType() EventType
 	GetCorrelationId() *string
 	GetCausationId() *string

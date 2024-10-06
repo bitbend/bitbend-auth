@@ -12,7 +12,7 @@ type EventBase struct {
 	Aggregate     *Aggregate      `json:"-"`
 	EventType     EventType       `json:"-"`
 	Payload       []byte          `json:"-"`
-	Creator       string          `json:"-"`
+	Creator       *string         `json:"-"`
 	CorrelationId *string         `json:"-"`
 	CausationId   *string         `json:"-"`
 	Position      decimal.Decimal `json:"-"`
@@ -33,7 +33,7 @@ func (eb *EventBase) GetAggregate() *Aggregate {
 	return eb.Aggregate
 }
 
-func (eb *EventBase) GetCreator() string {
+func (eb *EventBase) GetCreator() *string {
 	return eb.Creator
 }
 
