@@ -34,7 +34,7 @@ func (eb *EventBase) GetType() EventType {
 	return eb.Type
 }
 
-func (eb *EventBase) GetPayload() []byte {
+func (eb *EventBase) GetPayloadBytes() []byte {
 	return eb.Payload
 }
 
@@ -67,7 +67,7 @@ func EventBaseFromEvent(event Event) *EventBase {
 		Aggregate:     event.GetAggregate(),
 		Id:            event.GetId(),
 		Type:          event.GetType(),
-		Payload:       event.GetPayload(),
+		Payload:       event.GetPayloadBytes(),
 		Creator:       event.GetCreator(),
 		CorrelationId: event.GetCorrelationId(),
 		CausationId:   event.GetCausationId(),

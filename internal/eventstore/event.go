@@ -9,7 +9,7 @@ type Event interface {
 	GetAggregate() *Aggregate
 	GetId() string
 	GetType() EventType
-	GetPayload() []byte
+	GetPayloadBytes() []byte
 	UnmarshalPayload(ptr any) error
 	GetCreator() *string
 	GetCorrelationId() *string
