@@ -6,25 +6,35 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/oklog/ulid/v2"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/im"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"time"
 )
 
-func (es *EventStore) Push(ctx context.Context, commands []Command) ([]Event, error) {
+func (es *EventStore) Push(ctx context.Context, commands ...Command) ([]Event, error) {
+	var sequences []*latestSequence
+	var events []Event
 	var err error
-	events, err := commandsToEvents(commands)
-	if err != nil {
-		return nil, err
-	}
 
-	err = es.WithTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(ctx context.Context, tx pgx.Tx) error {
-		err = insertStreams(ctx, tx, events)
+	err = es.db.WithTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		sequences, err = fetchLatestSequences(ctx, tx, commands)
 		if err != nil {
 			return err
 		}
 
-		events, err = insertEvents(ctx, tx, events)
+		events, err = commandsToEvents(commands, sequences)
+		if err != nil {
+			return err
+		}
+
+		err = createStreams(ctx, tx, events)
+		if err != nil {
+			return err
+		}
+
+		events, err = createEvents(ctx, tx, events)
 		if err != nil {
 			return err
 		}
@@ -43,7 +53,84 @@ func (es *EventStore) Push(ctx context.Context, commands []Command) ([]Event, er
 	return mappedEvents, nil
 }
 
-func insertStreams(ctx context.Context, tx pgx.Tx, events []Event) error {
+type latestSequence struct {
+	aggregate *Aggregate
+}
+
+func fetchLatestSequences(ctx context.Context, tx pgx.Tx, commands []Command) ([]*latestSequence, error) {
+	var expr []bob.Expression
+	commandMap := make(map[string]Event)
+
+	query := psql.Select(
+		sm.From("streams"),
+		sm.Columns(
+			"tenant_id",
+			"id",
+			"stream_type",
+			"stream_version",
+			"stream_sequence",
+			"stream_owner",
+		),
+		sm.ForUpdate(),
+	)
+
+	for _, command := range commands {
+		aggregate := command.GetAggregate()
+		if aggregate == nil {
+			continue
+		}
+
+		key := fmt.Sprintf("%s:%s:%s", aggregate.TenantId, aggregate.Id, aggregate.Type)
+
+		if _, exists := commandMap[key]; !exists {
+			expr = append(expr, psql.ArgGroup(aggregate.TenantId, aggregate.Id, aggregate.Type))
+		}
+	}
+
+	query.Apply(
+		sm.Where(
+			psql.Group(
+				psql.Quote("tenant_id"),
+				psql.Quote("id"),
+				psql.Quote("stream_type"),
+			).In(expr...),
+		),
+	)
+
+	stmt, args, err := query.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := tx.Query(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sequences []*latestSequence
+	for rows.Next() {
+		var sequence latestSequence
+		if err = rows.Scan(
+			&sequence.aggregate.TenantId,
+			&sequence.aggregate.Id,
+			&sequence.aggregate.Type,
+			&sequence.aggregate.Version,
+			&sequence.aggregate.Sequence,
+			&sequence.aggregate.Owner,
+		); err != nil {
+			return nil, err
+		}
+		sequences = append(sequences, &sequence)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return sequences, nil
+}
+
+func createStreams(ctx context.Context, tx pgx.Tx, events []Event) error {
 	eventMap := make(map[string]Event)
 
 	query := psql.Insert(
@@ -66,7 +153,7 @@ func insertStreams(ctx context.Context, tx pgx.Tx, events []Event) error {
 			continue
 		}
 
-		key := fmt.Sprintf("%s:%s", aggregate.TenantId, aggregate.Id)
+		key := fmt.Sprintf("%s:%s:%s", aggregate.TenantId, aggregate.Id, aggregate.Type)
 
 		if _, exists := eventMap[key]; !exists {
 			eventMap[key] = event
@@ -100,7 +187,7 @@ func insertStreams(ctx context.Context, tx pgx.Tx, events []Event) error {
 	return nil
 }
 
-func insertEvents(ctx context.Context, tx pgx.Tx, events []Event) ([]Event, error) {
+func createEvents(ctx context.Context, tx pgx.Tx, events []Event) ([]Event, error) {
 	query := psql.Insert(
 		im.Into(
 			"events",
@@ -124,19 +211,19 @@ func insertEvents(ctx context.Context, tx pgx.Tx, events []Event) ([]Event, erro
 		query.Apply(
 			im.Values(
 				psql.Arg(
-					event.GetAggregate().TenantId,
-					event.GetId(),
-					event.GetAggregate().Id,
-					event.GetAggregate().Type,
-					event.GetAggregate().Version,
-					event.GetAggregate().Sequence,
-					event.GetAggregate().Owner,
-					event.GetType(),
-					event.GetPayload(),
-					event.GetCreator(),
-					event.GetCorrelationId(),
-					event.GetCausationId(),
-					event.GetCreatedAt(),
+					event.(*EventBase).Aggregate.TenantId,
+					event.(*EventBase).Id,
+					event.(*EventBase).Aggregate.Id,
+					event.(*EventBase).Aggregate.Type,
+					event.(*EventBase).Aggregate.Version,
+					event.(*EventBase).Aggregate.Sequence,
+					event.(*EventBase).Aggregate.Owner,
+					event.(*EventBase).Type,
+					event.(*EventBase).Payload,
+					event.(*EventBase).Creator,
+					event.(*EventBase).CorrelationId,
+					event.(*EventBase).CausationId,
+					event.(*EventBase).CreatedAt,
 				),
 			),
 		)
@@ -155,14 +242,14 @@ func insertEvents(ctx context.Context, tx pgx.Tx, events []Event) ([]Event, erro
 	return events, nil
 }
 
-func commandToEvent(command Command) (Event, error) {
+func commandToEvent(command Command, sequences *latestSequence) (Event, error) {
 	payload, err := json.Marshal(command.GetPayload())
 	if err != nil {
 		return nil, err
 	}
 
 	return &EventBase{
-		Aggregate:     command.GetAggregate(),
+		Aggregate:     sequences.aggregate,
 		Id:            ulid.Make().String(),
 		Type:          command.GetType(),
 		Payload:       payload,
@@ -173,10 +260,22 @@ func commandToEvent(command Command) (Event, error) {
 	}, nil
 }
 
-func commandsToEvents(commands []Command) ([]Event, error) {
+func searchSequenceByCommand(sequences []*latestSequence, command Command) *latestSequence {
+	for _, sequence := range sequences {
+		if sequence.aggregate.TenantId == command.GetAggregate().TenantId &&
+			sequence.aggregate.Id == command.GetAggregate().Id &&
+			sequence.aggregate.Type == command.GetAggregate().Type {
+			return sequence
+		}
+	}
+	return nil
+}
+
+func commandsToEvents(commands []Command, sequences []*latestSequence) ([]Event, error) {
 	events := make([]Event, len(commands))
 	for _, command := range commands {
-		event, err := commandToEvent(command)
+		sequence := searchSequenceByCommand(sequences, command)
+		event, err := commandToEvent(command, sequence)
 		if err != nil {
 			return nil, err
 		}
