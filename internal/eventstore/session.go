@@ -164,6 +164,9 @@ func (s *Session) Reduce(ctx context.Context, reducer Reducer) error {
 
 		reducer.AppendEvents(mappedEvent)
 	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
 
 	return reducer.Reduce()
 }
