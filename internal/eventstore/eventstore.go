@@ -7,3 +7,9 @@ import (
 type EventStore struct {
 	db *database.Db
 }
+
+func NewEventStore(db *database.Db) *EventStore {
+	return &EventStore{
+		db: db,
+	}
+}
