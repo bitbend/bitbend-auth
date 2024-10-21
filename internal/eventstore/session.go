@@ -21,7 +21,7 @@ func (es *EventStore) NewSession(ctx context.Context) (*Session, error) {
 }
 
 func (es *EventStore) NewSessionTx(ctx context.Context) (*Session, error) {
-	tx, err := es.db.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	tx, err := es.db.Pool().BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return nil, fmt.Errorf("error starting session transaction: %v", err)
 	}
@@ -132,7 +132,7 @@ func (s *Session) Reduce(ctx context.Context, reducer Reducer) error {
 			return err
 		}
 	} else {
-		rows, err = s.es.db.Pool.Query(ctx, stmt, args...)
+		rows, err = s.es.db.Pool().Query(ctx, stmt, args...)
 		if err != nil {
 			return err
 		}

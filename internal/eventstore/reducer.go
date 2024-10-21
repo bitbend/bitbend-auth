@@ -14,7 +14,7 @@ func (es *EventStore) Reduce(ctx context.Context, reducer Reducer) error {
 		return err
 	}
 
-	rows, err := es.db.Pool.Query(ctx, stmt, args...)
+	rows, err := es.db.Pool().Query(ctx, stmt, args...)
 	if err != nil {
 		return err
 	}

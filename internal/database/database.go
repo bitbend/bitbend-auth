@@ -8,11 +8,15 @@ import (
 )
 
 type Db struct {
-	Pool *pgxpool.Pool
+	pool *pgxpool.Pool
+}
+
+func (db *Db) Pool() *pgxpool.Pool {
+	return db.pool
 }
 
 func (db *Db) WithTx(ctx context.Context, txOptions pgx.TxOptions, fn func(tx pgx.Tx) error) error {
-	tx, err := db.Pool.BeginTx(ctx, txOptions)
+	tx, err := db.Pool().BeginTx(ctx, txOptions)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
