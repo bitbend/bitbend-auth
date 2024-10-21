@@ -9,11 +9,11 @@ import (
 )
 
 type Query struct {
+	aggregateTypes []AggregateType
 	aggregateIds   []string
-	aggregateTypes []string
-	eventTypes     []string
+	eventTypes     []EventType
 	eventPayload   map[string]any
-	queryBuilder   *QueryBuilder
+	builder        *QueryBuilder
 }
 
 type QueryBuilder struct {
