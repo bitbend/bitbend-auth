@@ -5,15 +5,24 @@ import (
 	"time"
 )
 
-type Event interface {
+type common interface {
 	GetAggregate() *Aggregate
-	GetId() string
 	GetType() EventType
-	GetPayloadBytes() []byte
-	UnmarshalPayload(ptr any) error
 	GetCreator() *string
 	GetCorrelationId() *string
 	GetCausationId() *string
+}
+
+type Command interface {
+	common
+	GetPayload() any
+}
+
+type Event interface {
+	common
+	GetId() string
+	GetPayloadBytes() []byte
+	UnmarshalPayload(ptr any) error
 	GetPosition() decimal.Decimal
 	GetCreatedAt() time.Time
 }
