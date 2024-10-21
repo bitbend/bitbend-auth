@@ -31,6 +31,7 @@ func (es *EventStore) Reduce(ctx context.Context, reducer Reducer) error {
 			&event.Aggregate.Sequence,
 			&event.Aggregate.Owner,
 			&event.Payload,
+			&event.Creator,
 			&event.CorrelationId,
 			&event.CausationId,
 			&event.CreatedAt,
