@@ -55,6 +55,8 @@ func (s *Session) SaveChanges(ctx context.Context) ([]Event, error) {
 		return nil, err
 	}
 
+	s.es.notify(mappedEvents)
+
 	return mappedEvents, nil
 }
 
