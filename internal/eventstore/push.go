@@ -50,6 +50,8 @@ func (es *EventStore) Push(ctx context.Context, commands ...Command) ([]Event, e
 		return nil, err
 	}
 
+	es.notify(mappedEvents)
+
 	return mappedEvents, nil
 }
 
