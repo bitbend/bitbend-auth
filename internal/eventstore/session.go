@@ -17,12 +17,7 @@ func (es *EventStore) NewSession(ctx context.Context) (*Session, error) {
 	}, nil
 }
 
-func (s *Session) StartStream(commands ...Command) *Session {
-	s.commands = append(s.commands, commands...)
-	return s
-}
-
-func (s *Session) AppendEvents(commands ...Command) *Session {
+func (s *Session) Push(commands ...Command) *Session {
 	s.commands = append(s.commands, commands...)
 	return s
 }
