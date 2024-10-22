@@ -2,7 +2,9 @@ package eventstore
 
 import (
 	"context"
+	"errors"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Session struct {
@@ -24,30 +26,37 @@ func (s *Session) Push(commands ...Command) *Session {
 
 func (s *Session) SaveChanges(ctx context.Context) ([]Event, error) {
 	var events []Event
-	err := s.es.db.WithTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-		sequences, err := fetchLatestSequences(ctx, tx, s.commands)
+
+retry:
+	for i := 0; i <= 10; i++ {
+		err := s.es.db.WithTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+			sequences, err := fetchLatestSequences(ctx, tx, s.commands)
+			if err != nil {
+				return err
+			}
+
+			events, err = commandsToEvents(s.commands, sequences)
+			if err != nil {
+				return err
+			}
+
+			if err = createStreams(ctx, tx, events); err != nil {
+				return err
+			}
+
+			events, err = createEvents(ctx, tx, events)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
 		if err != nil {
-			return err
+			var pgErr *pgconn.PgError
+			if !errors.As(err, &pgErr) || pgErr.ConstraintName != "events_stream_uk" || pgErr.SQLState() != "23505" {
+				break retry
+			}
 		}
-
-		events, err = commandsToEvents(s.commands, sequences)
-		if err != nil {
-			return err
-		}
-
-		if err = createStreams(ctx, tx, events); err != nil {
-			return err
-		}
-
-		events, err = createEvents(ctx, tx, events)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 
 	mappedEvents, err := s.es.mapEvents(events)
