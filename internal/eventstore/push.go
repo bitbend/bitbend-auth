@@ -3,8 +3,10 @@ package eventstore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/oklog/ulid/v2"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
@@ -18,31 +20,37 @@ func (es *EventStore) Push(ctx context.Context, commands ...Command) ([]Event, e
 	var events []Event
 	var err error
 
-	err = es.db.WithTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-		sequences, err = fetchLatestSequences(ctx, tx, commands)
-		if err != nil {
-			return err
-		}
+retry:
+	for i := 0; i <= 10; i++ {
+		err = es.db.WithTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+			sequences, err = fetchLatestSequences(ctx, tx, commands)
+			if err != nil {
+				return err
+			}
 
-		events, err = commandsToEvents(commands, sequences)
-		if err != nil {
-			return err
-		}
+			events, err = commandsToEvents(commands, sequences)
+			if err != nil {
+				return err
+			}
 
-		err = createStreams(ctx, tx, events)
-		if err != nil {
-			return err
-		}
+			err = createStreams(ctx, tx, events)
+			if err != nil {
+				return err
+			}
 
-		events, err = createEvents(ctx, tx, events)
-		if err != nil {
-			return err
-		}
+			events, err = createEvents(ctx, tx, events)
+			if err != nil {
+				return err
+			}
 
-		return nil
-	})
-	if err != nil {
-		return nil, err
+			return nil
+		})
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if !errors.As(err, &pgErr) || pgErr.ConstraintName != "events_stream_uk" || pgErr.SQLState() != "23505" {
+				break retry
+			}
+		}
 	}
 
 	mappedEvents, err := es.mapEvents(events)
