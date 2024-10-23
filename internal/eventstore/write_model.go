@@ -37,6 +37,10 @@ func (wm *WriteModel) Reduce() error {
 		wm.AggregateId = wm.Events[0].GetAggregate().Id
 	}
 
+	if wm.AggregateSequence == 0 {
+		wm.AggregateSequence = wm.Events[len(wm.Events)-1].GetAggregate().Sequence
+	}
+
 	if wm.Owner == "" {
 		wm.Owner = wm.Events[0].GetAggregate().Owner
 	}

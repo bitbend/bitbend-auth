@@ -6,13 +6,14 @@ import (
 )
 
 type ReadModel struct {
-	TenantId    string          `json:"-"`
-	AggregateId string          `json:"-"`
-	Owner       string          `json:"-"`
-	Events      []Event         `json:"-"`
-	Position    decimal.Decimal `json:"-"`
-	CreatedAt   time.Time       `json:"-"`
-	UpdatedAt   time.Time       `json:"-"`
+	TenantId          string          `json:"-"`
+	AggregateId       string          `json:"-"`
+	AggregateSequence int64           `json:"-"`
+	Owner             string          `json:"-"`
+	Events            []Event         `json:"-"`
+	Position          decimal.Decimal `json:"-"`
+	CreatedAt         time.Time       `json:"-"`
+	UpdatedAt         time.Time       `json:"-"`
 }
 
 func (rm *ReadModel) Query() *QueryBuilder {
@@ -34,6 +35,10 @@ func (rm *ReadModel) Reduce() error {
 
 	if rm.AggregateId == "" {
 		rm.AggregateId = rm.Events[0].GetAggregate().Id
+	}
+
+	if rm.AggregateSequence == 0 {
+		rm.AggregateSequence = rm.Events[len(rm.Events)-1].GetAggregate().Sequence
 	}
 
 	if rm.Owner == "" {
