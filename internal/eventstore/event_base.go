@@ -39,6 +39,9 @@ func (eb *EventBase) GetPayloadBytes() []byte {
 }
 
 func (eb *EventBase) UnmarshalPayload(ptr any) error {
+	if len(eb.Payload) == 0 {
+		return nil
+	}
 	return json.Unmarshal(eb.Payload, ptr)
 }
 
