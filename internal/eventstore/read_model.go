@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+var _ Reducer = (*ReadModel)(nil)
+
 type ReadModel struct {
 	TenantId          string          `json:"-"`
 	AggregateId       string          `json:"-"`
