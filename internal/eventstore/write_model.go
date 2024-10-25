@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+var _ Reducer = (*WriteModel)(nil)
+
 type WriteModel struct {
 	TenantId          string          `json:"-"`
 	AggregateId       string          `json:"-"`
